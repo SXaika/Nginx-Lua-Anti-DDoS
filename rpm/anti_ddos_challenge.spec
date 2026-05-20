@@ -15,7 +15,7 @@ Summary:        Nginx Lua Anti-DDoS script
 License:        MIT
 URL:            https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS
 Source0:        anti_ddos_challenge.lua
-SOURCE1:        LICENSE
+Source1:        LICENSE
 Source2:        README.md
 
 BuildArch:      noarch
@@ -53,8 +53,8 @@ install -D -m 0644 %{SOURCE1} %{buildroot}/usr/share/licenses/%{name}/LICENSE
 install -D -m 0644 %{SOURCE2} %{buildroot}/usr/share/doc/%{name}/README.md
 
 %files
-%license LICENSE
-%doc README.md
+%license /usr/share/licenses/%{name}/LICENSE
+%doc /usr/share/doc/%{name}/README.md
 %config(noreplace) /etc/nginx/anti_ddos_challenge.lua
 
 %post
@@ -66,6 +66,61 @@ fi
 
 # Auto added - DONT REMOVE
 %changelog
+* Sun May 17 2026 C0nw0nk <C0nw0nk@github> - 3.2-1
+- Added Feature ability to use redis cache server
+- Added Feature ability to use memcached server
+- Added Feature ability to use lrucache
+- Added Feature ability to use fallback servers for items store in cache incase server is down/offline
+* Sun May 17 2026 C0nw0nk <C0nw0nk@github> - 3.2-1
+- Added Feature ability to use redis cache server
+- Added Feature ability to use memcached server
+- Added Feature ability to use lrucache
+- Added Feature ability to use fallback servers for items store in cache incase server is down/offline
+* Mon May 11 2026 C0nw0nk <C0nw0nk@github> - 3.1-1
+- Added Feature for Caching only when cookie exists so now not only can you always cache and bypass cache on cookie but you can also not cache unless cookie is present useful for those who only want to enable caching when users browser has the correct cookie.
+* Sun May 10 2026 C0nw0nk <C0nw0nk@github> - 3.0-1
+- Added Additional options for caching display of set-cookie headers on cached pages 0 do not remove set-cookie header 1 remove set-cookie header on both HIT/UPDATING 2 remove from HIT ONLY 3 remove from UPDATING ONLY default behaviour is 2 for safety so cache updating / miss will send cookie headers but on cache HIT no header is sent
+* Sun May 10 2026 C0nw0nk <C0nw0nk@github> - 3.0-1
+- Added Additional options for caching display of set-cookie headers on cached pages 0 do not remove set-cookie header 1 remove set-cookie header on both HIT/UPDATING 2 remove from HIT ONLY 3 remove from UPDATING ONLY default behaviour is 2 for safety so cache updating / miss will send cookie headers but on cache HIT no header is sent
+* Fri Apr 17 2026 C0nw0nk <C0nw0nk@github> - 2.9-1
+- Added Feature allow content cache to match any type by using nil or empty string previous behaviour only matched by mime-type.
+- Added Feature for Hidden services like Tor, Freenet, invisible internet project etc to be controlled via nginx.conf file and to easily have other private internet services added via a Lua table easily that way other services users want to add can do so without needing to modify the scripts code.
+- Added Privacy features / compatibility with other privacy networks other than just .Tor Listed.
+- Added .eth ENS
+- Added Freenet
+- Added IPFS inter planetary file system
+- Added IPNS inter planetary name system
+- Added SWARM network
+- Added Radicale
+- Added i2p the invisible internet project
+- Added Lokinet
+- Added Zeronet
+* Fri Apr 17 2026 C0nw0nk <C0nw0nk@github> - 2.9-1
+- Added Feature allow content cache to match any type by using nil or empty string previous behaviour only matched by mime-type.
+- Added Feature for Hidden services like Tor, Freenet, invisible internet project etc to be controlled via nginx.conf file and to easily have other private internet services added via a Lua table easily that way other services users want to add can do so without needing to modify the scripts code.
+- Added Privacy features / compatibility with other privacy networks other than just .Tor Listed.
+- Added .eth ENS
+- Added Freenet
+- Added IPFS inter planetary file system
+- Added IPNS inter planetary name system
+- Added SWARM network
+- Added Radicale
+- Added i2p the invisible internet project
+- Added Lokinet
+- Added Zeronet
+* Fri Apr 17 2026 C0nw0nk <C0nw0nk@github> - 2.9-1
+- Added Feature allow content cache to match any type by using nil or empty string previous behaviour only matched by mime-type.
+- Added Feature for Hidden services like Tor, Freenet, invisible internet project etc to be controlled via nginx.conf file and to easily have other private internet services added via a Lua table easily that way other services users want to add can do so without needing to modify the scripts code.
+- Added Privacy features / compatibility with other privacy networks other than just .Tor Listed.
+- Added .eth ENS
+- Added Freenet
+- Added IPFS inter planetary file system
+- Added IPNS inter planetary name system
+- Added SWARM network
+- Added Radicale
+- Added i2p the invisible internet project
+- Added Lokinet
+- Added Zeronet
 * Mon Nov 03 2025 C0nw0nk <C0nw0nk@github> - 2.8-1
 - Added feature ability for script settings to be controlled from nginx configuration file nginx.conf or vhosts useful for those who do not want to edit the script but can instead use their vhosts virtual hosts or nginx config files to change settings of the script.
 - https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/wiki/Script-Overrides
