@@ -1,7 +1,7 @@
 
 --[[
 Introduction and details :
-Script Version: 3.2
+Script Version: 3.9
 
 Copyright Conor McKnight
 
@@ -37,7 +37,6 @@ localized.tonumber = tonumber
 localized.tostring = tostring
 localized.next = next
 localized.type = type
-localized.os_date = os.date
 localized.math_random = math.random
 localized.math_floor = math.floor
 localized.math_sin = math.sin
@@ -148,6 +147,8 @@ localized.URL = localized.scheme .. "://" .. localized.host .. localized.request
 localized.user_agent = localized.ngx_var_http_user_agent or "" --user agent of browser
 localized.currenttime = localized.ngx_time() --Current time on server
 localized.os_time_saved = localized.currenttime-24*60*60
+local function get_date_from_unix(wanted_type, unix_time) if localized.get_date_from_unix_cached == nil then localized.get_date_from_unix_cached = {} local day_count, year, days, month = function(yr) return (yr % 4 == 0 and (yr % 100 ~= 0 or yr % 400 == 0)) and 366 or 365 end, 1970, localized.math_floor(unix_time/86400) while days >= day_count(year) do days = days - day_count(year) year = year + 1 end local days_count = days local week = 0 local count = 0 for i=1, 52 do count = 7*i if count <= days_count then localized.get_date_from_unix_cached.week = i end end local tab_overflow = function(seed, table) for i = 1, #table do if seed - table[i] <= 0 then return i, seed end seed = seed - table[i] end end month, days = tab_overflow(days, {31,(day_count(year) == 366 and 29 or 28),31,30,31,30,31,31,30,31,30,31}) local hours, minutes, seconds = localized.math_floor(unix_time / 3600 % 24), localized.math_floor(unix_time / 60 % 60), localized.math_floor(unix_time % 60) localized.get_date_from_unix_cached.period = hours > 12 and "pm" or "am" localized.get_date_from_unix_cached.seconds = seconds localized.get_date_from_unix_cached.minutes = minutes localized.get_date_from_unix_cached.hours = hours localized.get_date_from_unix_cached.days = days localized.get_date_from_unix_cached.month = month localized.get_date_from_unix_cached.year = year end if wanted_type == "%M" then return localized.get_date_from_unix_cached.minutes end if wanted_type == "%H" then return localized.get_date_from_unix_cached.hours end if wanted_type == "%d" then return localized.get_date_from_unix_cached.days end if wanted_type == "%W" then return localized.get_date_from_unix_cached.week end if wanted_type == "%m" then return localized.get_date_from_unix_cached.month end if wanted_type == "%Y" then return localized.get_date_from_unix_cached.year end if wanted_type == "%z" then return localized.get_date_from_unix_cached.year+9 end if wanted_type == "%Y%m%d" then if localized.get_date_from_unix_cached.ymd == nil then localized.get_date_from_unix_cached.ymd = localized.string_gsub(localized.ngx.today(), "[-]", "") end return localized.get_date_from_unix_cached.ymd end if localized.get_date_from_unix_cached.full == nil then localized.get_date_from_unix_cached.full = localized.string_format("%d/%d/%04d %02d:%02d:%02d %s", localized.get_date_from_unix_cached.days, localized.get_date_from_unix_cached.month, localized.get_date_from_unix_cached.year, localized.get_date_from_unix_cached.hours, localized.get_date_from_unix_cached.minutes, localized.get_date_from_unix_cached.seconds, localized.get_date_from_unix_cached.period) end return localized.get_date_from_unix_cached.full end
+localized.os_date = get_date_from_unix
 --localized.os_clock = os.clock() --nulled out dev func to test speed
 --[[
 End localization
@@ -167,6 +168,46 @@ http { #inside http block
 }
 
 ]]
+
+--[[
+You can use Redis, Memcached, SHDICT, or LRUCache (least recently used cached) as optional storage for DDoS protection to keep IP's flood request data and banned addresses.
+Usage :
+Where you would use `localized.ngx.shared.antiddos` just use `localized.remote_servers_table` and it will use a server / service of your choice for remote storage :)
+]]
+--[[
+localized.remote_servers_table = {
+	1, --storage server for cache redis = 1 memcached = 2 lrucache = 3 ngx.shared.dict = 4 resty.redis.fast = 5 resty.redis.cluster.fast = 6 resty.memcached.fast = 7 rediscluster = 8 Rediscluster example https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/wiki/Using-Resty-Redis-Cluster-library
+	"127.0.0.1", --ipaddress or "unix:/path/to/unix.sock" if using socket set port to nil
+	6379, --port memcached 11211 redis 6379
+	nil,--1000, --connect_timeout 1 second
+	nil,--1000, --send_timeout 1 second
+	nil,--1000, --read_timeout 1 second
+	nil,--10000, --keepalive max_idle_timeout 10 seconds
+	nil,--100, --keepalive pool_size
+	nil,--"user", --auth_user
+	nil,--"pass", --auth_pass
+	nil,--{--11th table fallback incase server offline or goes down
+	--	{2,"127.0.0.2",11211,nil,nil,nil,nil,nil,nil,nil,nil,{pool="name_of_pool",pool_size=1024,}, }, --memcache
+	--	{3, localized_global.lrucache,}, --lru cache https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/wiki/lrucache-setup-example
+	--	{4, localized.ngx.shared.antiddos,}, --shared.dict
+	--},
+	nil,--{--12th table for connection options :connect(host, port, options_table?)
+	--	pool = "name_of_pool",
+	--	pool_size = 1024, --Specifies the max size of the connection pool
+	--	cluster = "cluster", --https://doc.openresty.com/en/xray/priv-libs/lua-resty-redis-cluster-fast/#connect
+	--	other_nodes = {
+	--		{"127.0.0.1",6380},
+	--		{"127.0.0.1",6381},
+	--		{"127.0.0.1",6382},
+	--	},
+	--	no_slaves = true,
+	--},
+	nil,--13th close_connection handling setting this to 1 will close connections after use, to use this instead of keepalive max_idle_timeout and pool_size above set the above to nil, having both above and this value as nil resty library will resort to default connection handling behaviour
+}]]
+localized.remote_servers_table = {
+	4, --ngx.shared.DICT memory zone
+	localized.ngx.shared.antiddos, --shared memory zone
+}
 
 localized.anti_ddos_table = {
 	{
@@ -213,14 +254,14 @@ localized.anti_ddos_table = {
 			--{"multipart",}, --block range headers on multipart content
 			{ --all types limit
 				"", --empty for any type
-				10, --Limit occurances block requests with to many 0-5,5-10,10-15,15-30,30-35 multipart/byteranges set to empty string "", to allow any amount
+				10, --Limit occurances block requests with to many 0-5,5-10,10-15,15-30,30-35 multipart/byteranges set to empty string "", to allow any amount https://nginx.org/en/docs/http/ngx_http_core_module.html#max_ranges
 			},
 
 			--[[
 			--You can also allow range headers on all content types and block multi segment ranges like this
 			{ --0 blacklist for ranges on any type block more than allowed number of segments
 				"", --empty for any type
-				10, --Limit occurances block requests with to many 0-5,5-10,10-15,15-30,30-35 multipart/byteranges set to empty string "", to allow any amount
+				10, --Limit occurances block requests with to many 0-5,5-10,10-15,15-30,30-35 multipart/byteranges set to empty string "", to allow any amount https://nginx.org/en/docs/http/ngx_http_core_module.html#max_ranges
 				"","",--0,100, --if requesting bytes between 0-100 too small block set to empty string "", to allow any amount
 				"", --"bytes", --bytes or set to empty string "", to allow any unit type
 				"", --"[a-zA-Z0-9-%,%=%s+]", --valid chars a-z lowercase A-Z uppercase 0-9 - hyphen , comma = equals and spaces
@@ -246,7 +287,7 @@ localized.anti_ddos_table = {
 			--[[
 			{ --1 whitelist for video type range headers sent for other types not in the whitelist will be blocked
 				"video", --content type for range request set to empty string "", for any content type
-				10, --Limit occurances block requests with to many 0-5,5-10,10-15,15-30,30-35 multipart/byteranges set to empty string "", to allow any amount
+				10, --Limit occurances block requests with to many 0-5,5-10,10-15,15-30,30-35 multipart/byteranges set to empty string "", to allow any amount https://nginx.org/en/docs/http/ngx_http_core_module.html#max_ranges
 				0,100, --if requesting bytes between 0-100 too small block set to empty string "", to allow any amount --curl -H "Range: bytes=0-5,5-10,10-15,15-30,30-35" http://localhost/video.mp4 --output "C:\Videos" -H "User-Agent: testagent"
 				"bytes", --bytes or set to empty string "", to allow any unit type
 				"[a-zA-Z0-9-%,%=%s+]", --valid chars a-z lowercase A-Z uppercase 0-9 - hyphen , comma = equals and spaces
@@ -265,10 +306,12 @@ localized.anti_ddos_table = {
 		lua_shared_dict jspuzzle_tracker 70m; #Anti-DDoS shared memory zone monitors each unique ip and number of times they stack up failing to solve the puzzle
 
 		10m can store 160,000 ip addresses so 70m would be able to store around 1,000,000 yes 1 million ips :)
+		
+		Or lua table `localized.remote_servers_table` for advanced options you can use Redis, Memcached, lrucache etc.
 		]]
-		localized.ngx.shared.antiddos, --this zone monitors each unique ip and number of requests they stack up
-		localized.ngx.shared.antiddos_blocked, --this zone is where ips are put that exceed the max limit
-		localized.ngx.shared.ddos_counter, --this zone is for the total number of ips in the list that are currently blocked
+		localized.remote_servers_table,--localized.ngx.shared.antiddos, --this zone monitors each unique ip and number of requests they stack up or lua table `localized.remote_servers_table` for advanced options
+		localized.remote_servers_table,--localized.ngx.shared.antiddos_blocked, --this zone is where ips are put that exceed the max limit or lua table `localized.remote_servers_table` for advanced options
+		localized.remote_servers_table,--localized.ngx.shared.ddos_counter, --this zone is for the total number of ips in the list that are currently blocked or lua table `localized.remote_servers_table` for advanced options
 
 		--Unique identifyer to use IP address works well but set this to Auto if you expect proxy traffic like from cloudflare
 		--localized.ngx_var_binary_remote_addr, --if you use binary remote addr and the antiddos shared address is 10m in size you can store 160k ip addresses before you need to increase the memory dedicated
@@ -338,7 +381,7 @@ localized.anti_ddos_table = {
 		--Javascript puzzle flood protection
 		--In the event of an attack a user who fails to solve the javascript puzzle after a certain number of times will have their ip blocked
 		--lua_shared_dict jspuzzle_tracker 70m; #Anti-DDoS shared memory zone monitors each unique ip and number of times they stack up failing to solve the puzzle
-		localized.ngx.shared.jspuzzle_tracker, --this zone monitors each unique ip and number of times they stack up failing to solve the puzzle
+		localized.remote_servers_table,--localized.ngx.shared.jspuzzle_tracker, --this zone monitors each unique ip and number of times they stack up failing to solve the puzzle or lua table `localized.remote_servers_table` for advanced options
 		35, --35 second window
 		4, --max 4 failures in 35s
 
@@ -347,7 +390,7 @@ localized.anti_ddos_table = {
 		--Default is nil or "" to not do anything
 		nil,
 		--[[
-		{ --Compaitbility across multiple systems will auto detect if your running windows the script will choose the Windows CMD same for linux, MacOS etc that way you can use the same script via network share or across multiple platforms
+		{ --Compaitbility across multiple systems will auto detect if your running windows the script will choose the Windows CMD same for linux, MacOS etc that way you can use the same script via network share or across multiple platforms this is nonblocking becuase you can use https://github.com/openresty/lua-resty-shell#name
 			--Windows
 			"start cmd /c netsh advfirewall firewall add rule name=\"Block In "..localized.ngx_var_remote_addr.."\" protocol=any dir=in remoteip="..localized.ngx_var_remote_addr.." action=block",
 			--Linux
@@ -361,6 +404,19 @@ localized.anti_ddos_table = {
 		--Protection from excessive log writes when under attack
 		--This depends on the value in your Automatic I am Under Attack Mode setting by default its 100 ips if more than that logging stops i suggest leave at default
 		1, --0 will continue to log 1 disable writting to log file when under attack to prevent disk I/O usage denial of service
+
+		--https://nginx.org/en/docs/http/ngx_http_core_module.html#max_headers
+		500, --Maximum number of headers client allowed to send in request use nil to ignore
+		localized.ngx_HTTP_CLOSE, --close their connection
+		1, --1 to add ip to ban list 0 to just send response above close the connection
+
+		1000, --Maximum number of request uri arguments /?arg1=1&arg2=2 use nil to ignore
+		localized.ngx_HTTP_CLOSE, --close their connection
+		1, --1 to add ip to ban list 0 to just send response above close the connection
+
+		2000, --Maximum request uri length this will be url path excluding domain names /example/path?arg1=1&arg2=2 use nil to ignore
+		localized.ngx_HTTP_CLOSE, --close their connection
+		1, --1 to add ip to ban list 0 to just send response above close the connection
 
 	},
 }
@@ -395,24 +451,7 @@ localized.content_cache = {
 		".*", --regex match any site / path
 		"text/html", --empty string matches all "" content-type valid types are text to match all text formats or text/css text/javascript etc
 		--lua_shared_dict html_cache 10m; #HTML pages cache
-		localized.ngx.shared.html_cache, --shared cache zone to use or empty string to not use "" lua_shared_dict html_cache 10m; #HTML pages cache or lua table for advanced options
-		--{
-		--	1, --storage server for cache redis = 1 memcached = 2 lrucache = 3 ngx.shared.dict = 4
-		--	"127.0.0.1", --ipaddress or "unix:/path/to/unix.sock" if using socket set port to nil
-		--	6379, --port memcached 11211 redis 6379
-		--	nil,--1000, --connect_timeout 1 second
-		--	nil,--1000, --send_timeout 1 second
-		--	nil,--1000, --read_timeout 1 second
-		--	nil,--10000, --keepalive max_idle_timeout 10 seconds
-		--	nil,--100, --keepalive pool_size
-		--	nil,--"user", --auth_user
-		--	nil,--"pass", --auth_pass
-		--	{--11th table fallback incase server offline or goes down
-		--		{2,"127.0.0.2",11211,}, --memcache
-		--		{3, localized_global.lrucache,}, --lru cache https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/wiki/lrucache-setup-example
-		--		{4, localized.ngx.shared.html_cache,}, --shared.dict
-		--	},
-		--},
+		localized.remote_servers_table,--localized.ngx.shared.html_cache, --shared cache zone to use or empty string to not use "" lua_shared_dict html_cache 10m; #HTML pages cache or lua table `localized.remote_servers_table` for advanced options
 		60, --ttl for cache or ""
 		1, --enable logging 1 to enable 0 to disable
 		{200,206,}, --response status codes to cache
@@ -474,24 +513,7 @@ localized.content_cache = {
 		".*", --regex match any site / path
 		"video/mp4", --content-type valid types are video to match all video formats or video/mp4 video/webm etc
 		--lua_shared_dict mp4_cache 300m; #video mp4 cache
-		localized.ngx.shared.mp4_cache, --shared cache zone to use or empty string to not use "" lua_shared_dict mp4_cache 300m; #video mp4 cache  or lua table for advanced options
-		--{
-		--	1, --storage server for cache redis = 1 memcached = 2 lrucache = 3 ngx.shared.dict = 4
-		--	"127.0.0.1", --ipaddress or "unix:/path/to/unix.sock" if using socket set port to nil
-		--	6379, --port memcached 11211 redis 6379
-		--	nil,--1000, --connect_timeout 1 second
-		--	nil,--1000, --send_timeout 1 second
-		--	nil,--1000, --read_timeout 1 second
-		--	nil,--10000, --keepalive max_idle_timeout 10 seconds
-		--	nil,--100, --keepalive pool_size
-		--	nil,--"user", --auth_user
-		--	nil,--"pass", --auth_pass
-		--	{--11th table fallback incase server offline or goes down
-		--		{2,"127.0.0.2",11211,}, --memcache
-		--		{3, localized_global.lrucache,}, --lru cache https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/wiki/lrucache-setup-example
-		--		{4, localized.ngx.shared.html_cache,}, --shared.dict
-		--	},
-		--},
+		localized.remote_servers_table,--localized.ngx.shared.mp4_cache, --shared cache zone to use or empty string to not use "" lua_shared_dict mp4_cache 300m; #video mp4 cache  or lua table `localized.remote_servers_table` for advanced options
 		60, --ttl for cache or ""
 		1, --enable logging 1 to enable 0 to disable
 		{200,206,}, --response status codes to cache
@@ -528,24 +550,7 @@ localized.content_cache = {
 		".*", --regex match any site / path
 		"image", --content-type for image/png image/jpeg image/x-icon etc
 		--lua_shared_dict image_cache 300m; #image cache
-		localized.ngx.shared.image_cache, --shared cache zone to use or empty string to not use "" lua_shared_dict image_cache 300m; #image cache  or lua table for advanced options
-		--{
-		--	1, --storage server for cache redis = 1 memcached = 2 lrucache = 3 ngx.shared.dict = 4
-		--	"127.0.0.1", --ipaddress or "unix:/path/to/unix.sock" if using socket set port to nil
-		--	6379, --port memcached 11211 redis 6379
-		--	nil,--1000, --connect_timeout 1 second
-		--	nil,--1000, --send_timeout 1 second
-		--	nil,--1000, --read_timeout 1 second
-		--	nil,--10000, --keepalive max_idle_timeout 10 seconds
-		--	nil,--100, --keepalive pool_size
-		--	nil,--"user", --auth_user
-		--	nil,--"pass", --auth_pass
-		--	{--11th table fallback incase server offline or goes down
-		--		{2,"127.0.0.2",11211,}, --memcache
-		--		{3, localized_global.lrucache,}, --lru cache https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/wiki/lrucache-setup-example
-		--		{4, localized.ngx.shared.html_cache,}, --shared.dict
-		--	},
-		--},
+		localized.remote_servers_table,--localized.ngx.shared.image_cache, --shared cache zone to use or empty string to not use "" lua_shared_dict image_cache 300m; #image cache  or lua table `localized.remote_servers_table` for advanced options
 		60, --ttl for cache or ""
 		1, --enable logging 1 to enable 0 to disable
 		{200,206,}, --response status codes to cache
@@ -1988,16 +1993,21 @@ This way for each website or nginx config or vhost virtual host you can use the 
 Example: nginx.conf inside the http block
 http {
 init_by_lua '
+if localized_global == nil then --if global not exists
 localized_global = {} --define global var that script can read
+end
 localized_global.secret = " enigma" --nginx config now sets secret key and the script will use the secret key from here
 localized_global.credits = 2 --disable ddos credits
 --clear the IP whitelists
-localized_global.proxy_header_table = nil
-localized_global.ip_whitelist = nil
+localized_global.proxy_header_table = {}
+localized_global.ip_whitelist = {}
 ';
 }
 ]]
 if localized_global ~= nil then
+if localized_global.remote_servers_table ~= nil then
+localized.remote_servers_table = localized_global.remote_servers_table
+end
 if localized_global.anti_ddos_table ~= nil then
 localized.anti_ddos_table = localized_global.anti_ddos_table
 end
@@ -2215,8 +2225,11 @@ end
 --localized.URL = localized.scheme .. "://" .. localized.host .. localized.request_uri
 
 --Test clear the IP whitelists
---localized.proxy_header_table = nil
---localized.ip_whitelist = nil
+--localized.proxy_header_table = {}
+--localized.ip_whitelist = {}
+--localized.anti_ddos_table = {}
+--localized.expire_time = 86400 --One day
+--localized.refresh_auth = 5000 --changed to a long time so the page wont refresh while making changes
 
 --[[
 Begin Required Functions
@@ -3049,25 +3062,707 @@ local function proxy_header_ip_check(ip_table)
 	return false
 end
 
+local function remote_cache(input_table, logging, keep, close_conn)
+	if localized[input_table] ~= nil and keep == nil and close_conn == nil then
+		return localized[input_table]
+	end
+	if localized.dummy ~= nil and keep ~= nil and close_conn == nil then
+		if localized.dummy[input_table].max_idle_timeout ~= nil and localized.dummy[input_table].pool_size ~= nil then
+			if localized.dummy[input_table].socket_status == 1 then --socket already closed
+				return
+			end
+			if localized.type(localized.dummy[input_table].max_idle_timeout) ~= "function" and localized.type(localized.dummy[input_table].pool_size) ~= "function" then
+				local ok, err = localized[input_table]:set_keepalive(localized.dummy[input_table].max_idle_timeout, localized.dummy[input_table].pool_size)
+				if not ok then
+					if logging == 1 then
+						--if err ~= "closed" then --ignore already closed connections
+							localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to set keepalive: " .. err )
+						--end
+					end
+				end
+				localized.dummy[input_table].socket_status = 1
+				return
+			else
+				return
+			end
+		end
+	end
+	if localized.dummy ~= nil and keep == nil and close_conn ~= nil then
+		if localized.dummy[input_table].close_connection ~= nil then
+			if localized.dummy[input_table].socket_status == 1 then --socket already closed
+				return
+			end
+			if localized.type(localized.dummy[input_table].close_connection) ~= "function" then
+				local ok, err = localized[input_table]:close()
+				if not ok then
+					if logging == 1 then
+						--if err ~= "closed" then --ignore already closed connections
+							localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to close: " .. err )
+						--end
+					end
+				end
+				localized.dummy[input_table].socket_status = 1
+				return
+			else
+				return
+			end
+		end
+	end
+
+	localized.cached_restyredis = nil
+	local function check_resty_redis()
+		if localized.cached_restyredis ~= nil then
+			return localized.cached_restyredis
+		end
+		local pcall = pcall
+		local require = require
+		localized.cached_restyredis = pcall(require, "resty.redis") --check if resty redis library exists will be true or false
+		return localized.cached_restyredis
+	end
+
+	localized.cached_restyredis_fast = nil
+	local function check_resty_redis_fast()
+		if localized.cached_restyredis_fast ~= nil then
+			return localized.cached_restyredis_fast
+		end
+		local pcall = pcall
+		local require = require
+		localized.cached_restyredis_fast = pcall(require, "resty.redis.fast") --check if resty redis fast library exists will be true or false
+		return localized.cached_restyredis_fast
+	end
+
+	localized.cached_restyredis_cluster_fast = nil
+	local function check_resty_redis_cluster_fast()
+		if localized.cached_restyredis_cluster_fast ~= nil then
+			return localized.cached_restyredis_cluster_fast
+		end
+		local pcall = pcall
+		local require = require
+		localized.cached_restyredis_cluster_fast = pcall(require, "resty.redis.cluster.fast") --check if resty redis cluster fast library exists will be true or false
+		return localized.cached_restyredis_cluster_fast
+	end
+
+	localized.cached_redis_cluster = nil
+	local function check_redis_cluster()
+		if localized.cached_redis_cluster ~= nil then
+			return localized.cached_redis_cluster
+		end
+		local pcall = pcall
+		local require = require
+		localized.cached_redis_cluster = pcall(require, "rediscluster") --check if redis cluster library exists will be true or false
+		return localized.cached_redis_cluster
+	end
+
+	localized.cached_restymemcached = nil
+	local function check_resty_memcached()
+		if localized.cached_restymemcached ~= nil then
+			return localized.cached_restymemcached
+		end
+		local pcall = pcall
+		local require = require
+		localized.cached_restymemcached = pcall(require, "resty.memcached") --check if resty memcached library exists will be true or false
+		return localized.cached_restymemcached
+	end
+
+	localized.cached_restymemcached_fast = nil
+	local function check_resty_memcached_fast()
+		if localized.cached_restymemcached_fast ~= nil then
+			return localized.cached_restymemcached_fast
+		end
+		local pcall = pcall
+		local require = require
+		localized.cached_restymemcached_fast = pcall(require, "resty.memcached.fast") --check if resty memcached fast library exists will be true or false
+		return localized.cached_restymemcached_fast
+	end
+
+	localized.cached_restylrucache = nil
+	local function check_resty_lrucache()
+		if localized.cached_restylrucache ~= nil then
+			return localized.cached_restylrucache
+		end
+		local pcall = pcall
+		local require = require
+		localized.cached_restylrucache = pcall(require, "resty.lrucache") --check if resty lrucache library exists will be true or false
+		return localized.cached_restylrucache
+	end
+
+	local cached = input_table or nil
+	localized.resty_redis = 0
+	localized.resty_lrucache = 0
+	localized.resty_shdict = 0
+	localized.resty_memcached = 0
+	local master_break = false
+	if cached ~= "" and cached ~= nil and localized.type(cached) == "table" then
+		local connect_timeout, send_timeout, read_timeout, libconaddr, libconport, max_idle_timeout, pool_size, auth_user, auth_pass, fallback_servers, libconoptions, close_connection = nil
+		for x=1,#input_table do
+			--localized.ngx_log(localized.ngx_LOG_TYPE, " table var - " .. input_table[x] )
+			if x == 1 then
+				if input_table[x] == 1 then
+					--localized.ngx_log(localized.ngx_LOG_TYPE, " redis - " .. localized.tostring(check_resty_redis()) )
+					if check_resty_redis() then
+						localized.libcached = require "resty.redis"
+						cached = localized.libcached:new()
+						localized.resty_redis = 1
+					else
+						if logging == 1 then
+							localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+						end
+						return
+					end
+				end
+				if input_table[x] == 2 then
+					--localized.ngx_log(localized.ngx_LOG_TYPE, " memcached - " .. localized.tostring(check_resty_memcached()) )
+					if check_resty_memcached() then
+						localized.libcached = require "resty.memcached"
+						cached = localized.libcached:new()
+						localized.resty_memcached = 1
+					else
+						if logging == 1 then
+							localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+						end
+						return
+					end
+				end
+				if input_table[x] == 3 then
+					--localized.ngx_log(localized.ngx_LOG_TYPE, " lrucache - " .. localized.tostring(check_resty_lrucache()) )
+					if check_resty_lrucache() and input_table[2] ~= nil then
+						localized.resty_lrucache = 1
+						--localized.libcached = require "resty.lrucache"
+						--cached = localized_global.lrucache
+						cached = input_table[2]
+						--[[
+						init_by_lua_block {
+						if localized_global == nil then --if global not exists
+						localized_global = {} --define global var that script can read
+						end
+						local libcached = require "resty.lrucache"
+						localized_global.lrucache = libcached.new(100)
+						}
+						]]
+					else
+						if logging == 1 then
+							localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+						end
+						return
+					end
+				end
+				if input_table[x] == 4 then
+					localized.resty_shdict = 1
+					cached = input_table[2]
+					break
+				end
+				if input_table[x] == 5 then
+					--localized.ngx_log(localized.ngx_LOG_TYPE, " redis - " .. localized.tostring(check_resty_redis_fast()) )
+					if check_resty_redis_fast() then
+						localized.libcached = require "resty.redis.fast"
+						cached = localized.libcached:new()
+						localized.resty_redis = 1
+					else
+						if logging == 1 then
+							localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+						end
+						return
+					end
+				end
+				if input_table[x] == 6 then
+					--localized.ngx_log(localized.ngx_LOG_TYPE, " redis - " .. localized.tostring(check_resty_redis_cluster_fast()) )
+					if check_resty_redis_cluster_fast() then
+						localized.libcached = require "resty.redis.cluster.fast"
+						cached = localized.libcached:new()
+						localized.resty_redis = 1
+					else
+						if logging == 1 then
+							localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+						end
+						return
+					end
+				end
+				if input_table[x] == 7 then
+					--localized.ngx_log(localized.ngx_LOG_TYPE, " memcached - " .. localized.tostring(check_resty_memcached_fast()) )
+					if check_resty_memcached_fast() then
+						localized.libcached = require "resty.memcached.fast"
+						cached = localized.libcached:new()
+						localized.resty_memcached = 1
+					else
+						if logging == 1 then
+							localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+						end
+						return
+					end
+				end
+				if input_table[x] == 8 and input_table[12] ~= nil then
+					--localized.ngx_log(localized.ngx_LOG_TYPE, " memcached - " .. localized.tostring(check_redis_cluster()) )
+					if check_redis_cluster() then
+						localized.libcached = require "rediscluster"
+						cached = localized.libcached:new(input_table[12]) --12th var libconoptions
+						localized.resty_redis = 1
+					else
+						if logging == 1 then
+							localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+						end
+						return
+					end
+				end
+			end
+			if x == 2 then
+				--ip address or socket
+				libconaddr = input_table[x]
+			end
+			if x == 3 then
+				--port
+				libconport = input_table[x]
+			end
+			if x == 4 then
+				--connect_timeout
+				connect_timeout = input_table[x]
+			end
+			if x == 5 then
+				--send_timeout
+				send_timeout = input_table[x]
+			end
+			if x == 6 then
+				--read_timeout
+				read_timeout = input_table[x]
+			end
+			if x == 7 then
+				--keepalive max_idle_timeout
+				max_idle_timeout = input_table[x]
+			end
+			if x == 8 then
+				--keepalive pool_size
+				pool_size = input_table[x]
+			end
+			if x == 9 then
+				auth_user = input_table[x]
+			end
+			if x == 10 then
+				auth_pass = input_table[x]
+			end
+			if x == 11 then
+				fallback_servers = input_table[x]
+			end
+			if x == 12 then
+				libconoptions = input_table[x]
+			end
+			if x == 13 then
+				close_connection = input_table[x]
+			end
+		end
+
+		local function connect_server(connect_timeout, send_timeout, read_timeout, libconaddr, libconport, max_idle_timeout, pool_size, auth_user, auth_pass, libconoptions)
+			if connect_timeout ~= nil and send_timeout ~= nil and read_timeout ~= nil then
+				cached:set_timeouts(connect_timeout, send_timeout, read_timeout)
+			end
+			if connect_timeout ~= nil and send_timeout == nil and read_timeout == nil then
+				cached:set_timeout(connect_timeout)
+			end
+
+			if libconaddr ~= nil and libconport == nil and libconoptions == nil then
+				local ok, err = cached:connect(libconaddr)
+				if not ok then
+					if logging == 1 then
+						localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to connect: " .. err )
+					end
+					return false
+				end
+			end
+
+			if libconaddr ~= nil and libconport ~= nil and libconoptions ~= nil then
+				local ok, err = cached:connect(libconaddr, libconport, libconoptions)
+				if not ok then
+					if logging == 1 then
+						localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to connect: " .. err )
+					end
+					return false
+				end
+			end
+
+			if libconaddr ~= nil and libconport == nil and libconoptions ~= nil then
+				local ok, err = cached:connect(libconaddr, libconport, libconoptions)
+				if not ok then
+					if logging == 1 then
+						localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to connect: " .. err )
+					end
+					return false
+				end
+			end
+
+			if libconaddr ~= nil and libconport ~= nil and libconoptions == nil then
+				local ok, err = cached:connect(libconaddr, libconport)
+				if not ok then
+					if logging == 1 then
+						localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to connect: " .. err )
+					end
+					return false
+				end
+			end
+
+			if auth_user ~= nil and auth_pass ~= nil then
+				local ok, err = cached:auth(auth_user, auth_pass)
+				if not ok then
+					if logging == 1 then
+						localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to authenticate: ", err)
+					end
+					return false
+				end
+			end
+
+			if auth_user == nil and auth_pass ~= nil then
+				local ok, err = cached:auth(auth_pass)
+				if not ok then
+					if logging == 1 then
+						localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to authenticate: ", err)
+					end
+					return false
+				end
+			end
+			return true --all checks passed
+		end
+		--connect_server()
+
+		if localized.resty_redis == 1 or localized.resty_memcached == 1 then
+			if connect_server(connect_timeout, send_timeout, read_timeout, libconaddr, libconport, max_idle_timeout, pool_size, auth_user, auth_pass, libconoptions) == false and fallback_servers ~= nil then
+				for y=1,#fallback_servers do
+					localized.resty_redis = 0 --reset to 0
+					localized.resty_lrucache = 0 --reset to 0
+					localized.resty_shdict = 0 --reset to 0
+					localized.resty_memcached = 0 --reset to 0
+					if master_break then break end
+					for z=1,#fallback_servers[y] do
+						if z == 1 then
+							if fallback_servers[y][z] == 1 then
+								--localized.ngx_log(localized.ngx_LOG_TYPE, " redis - " .. localized.tostring(check_resty_redis()) )
+								if check_resty_redis() then
+									localized.libcached = require "resty.redis"
+									cached = localized.libcached:new()
+									localized.resty_redis = 1
+								else
+									if logging == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+									end
+									return
+								end
+							end
+							if fallback_servers[y][z] == 2 then
+								--localized.ngx_log(localized.ngx_LOG_TYPE, " memcached - " .. localized.tostring(check_resty_memcached()) )
+								if check_resty_memcached() then
+									localized.libcached = require "resty.memcached"
+									cached = localized.libcached:new()
+									localized.resty_memcached = 1
+								else
+									if logging == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+									end
+									return
+								end
+							end
+							if fallback_servers[y][z] == 3 then
+								--localized.ngx_log(localized.ngx_LOG_TYPE, " lrucache - " .. localized.tostring(check_resty_lrucache()) )
+								if check_resty_lrucache() and fallback_servers[y][2] ~= nil then
+									localized.resty_lrucache = 1
+									--localized.libcached = require "resty.lrucache"
+									--cached = localized_global.lrucache
+									cached = fallback_servers[y][2]
+									--[[
+									init_by_lua_block {
+									if localized_global == nil then --if global not exists
+									localized_global = {} --define global var that script can read
+									end
+									local libcached = require "resty.lrucache"
+									localized_global.lrucache = libcached.new(100)
+									}
+									]]
+									if cached then
+										master_break = true
+										break
+									end
+								else
+									if logging == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+									end
+									return
+								end
+							end
+							if fallback_servers[y][z] == 4 then
+								localized.resty_shdict = 1
+								cached = fallback_servers[y][2]
+								if cached then
+									master_break = true
+									break
+								end
+							end
+							if fallback_servers[y][z] == 5 then
+								--localized.ngx_log(localized.ngx_LOG_TYPE, " redis - " .. localized.tostring(check_resty_redis_fast()) )
+								if check_resty_redis_fast() then
+									localized.libcached = require "resty.redis.fast"
+									cached = localized.libcached:new()
+									localized.resty_redis = 1
+								else
+									if logging == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+									end
+									return
+								end
+							end
+							if fallback_servers[y][z] == 6 then
+								--localized.ngx_log(localized.ngx_LOG_TYPE, " redis - " .. localized.tostring(check_resty_redis_cluster_fast()) )
+								if check_resty_redis_cluster_fast() then
+									localized.libcached = require "resty.redis.cluster.fast"
+									cached = localized.libcached:new()
+									localized.resty_redis = 1
+								else
+									if logging == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+									end
+									return
+								end
+							end
+							if fallback_servers[y][z] == 7 then
+								--localized.ngx_log(localized.ngx_LOG_TYPE, " memcached - " .. localized.tostring(check_resty_memcached_fast()) )
+								if check_resty_memcached_fast() then
+									localized.libcached = require "resty.memcached.fast"
+									cached = localized.libcached:new()
+									localized.resty_memcached = 1
+								else
+									if logging == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+									end
+									return
+								end
+							end
+							if fallback_servers[y][z] == 8 and fallback_servers[y][12] ~= nil then
+								--localized.ngx_log(localized.ngx_LOG_TYPE, " memcached - " .. localized.tostring(check_redis_cluster()) )
+								if check_redis_cluster() then
+									localized.libcached = require "rediscluster"
+									cached = localized.libcached:new(fallback_servers[y][12]) --12th var libconoptions
+									localized.resty_redis = 1
+								else
+									if logging == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
+									end
+									return
+								end
+							end
+						end
+						if z == 2 then
+							--ip address or socket
+							libconaddr = fallback_servers[y][z]
+						end
+						if z == 3 then
+							--port
+							libconport = fallback_servers[y][z]
+						end
+						if z == 4 then
+							--connect_timeout
+							connect_timeout = fallback_servers[y][z]
+						end
+						if z == 5 then
+							--send_timeout
+							send_timeout = fallback_servers[y][z]
+						end
+						if z == 6 then
+							--read_timeout
+							read_timeout = fallback_servers[y][z]
+						end
+						if z == 7 then
+							--keepalive max_idle_timeout
+							max_idle_timeout = fallback_servers[y][z]
+						end
+						if z == 8 then
+							--keepalive pool_size
+							pool_size = fallback_servers[y][z]
+						end
+						if z == 9 then
+							auth_user = fallback_servers[y][z]
+						end
+						if z == 10 then
+							auth_pass = fallback_servers[y][z]
+						end
+						if z == 12 then
+							libconoptions = fallback_servers[y][z]
+						end
+						if z == 13 then
+							close_connection = fallback_servers[y][z]
+						end
+						if localized.resty_redis == 1 or localized.resty_memcached == 1 then
+							if connect_server(connect_timeout, send_timeout, read_timeout, libconaddr, libconport, max_idle_timeout, pool_size, auth_user, auth_pass, libconoptions) == true then
+								master_break = true
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+		if max_idle_timeout ~= nil and pool_size ~= nil then
+			if localized.dummy == nil then
+				localized.dummy = {}
+			end
+			localized.dummy[input_table] = cached
+			localized.dummy[input_table].max_idle_timeout = max_idle_timeout
+			localized.dummy[input_table].pool_size = pool_size
+		end
+		if close_connection ~= nil then
+			if localized.dummy == nil then
+				localized.dummy = {}
+			end
+			localized.dummy[input_table] = cached
+			localized.dummy[input_table].close_connection = close_connection
+		end
+	end
+	localized[input_table] = cached
+	return cached --all checks passed
+end
+
+local function close_connection(method)
+	if localized.anti_ddos_table ~= nil and #localized.anti_ddos_table > 0 and localized.dummy ~= nil and method == nil then
+		for i=1,#localized.anti_ddos_table do --for each host/path in our table
+			local v = localized.anti_ddos_table[i]
+			if faster_than_match(v[1]) or localized.string_find(localized.URL, v[1]) then --if our host matches one in the table
+				if localized.request_limit == nil then
+					localized.request_limit = remote_cache(v[19], v[7])
+					--localized.request_limit = v[19] or nil --What ever memory space your server has set / defined for this to use
+				end
+				if localized.blocked_addr == nil then
+					localized.blocked_addr = remote_cache(v[20], v[7])
+					--localized.blocked_addr = v[20] or nil
+				end
+				if localized.ddos_counter == nil then
+					localized.ddos_counter = remote_cache(v[21], v[7])
+					--localized.ddos_counter = v[21] or nil
+				end
+				if localized.request_limit ~= nil and localized.blocked_addr ~= nil and localized.ddos_counter ~= nil then
+					if localized.resty_redis == 1 or localized.resty_memcached == 1 then
+						if localized.dummy ~= nil then
+							local tab_request_limit, tab_blocked_addr, tab_ddos_counter, tab_logging = v[19], v[20], v[21], v[7]
+							--keepalive
+							remote_cache(tab_request_limit, tab_logging, 1)
+							remote_cache(tab_blocked_addr, tab_logging, 1)
+							remote_cache(tab_ddos_counter, tab_logging, 1)
+							--close_connection
+							remote_cache(tab_request_limit, tab_logging, nil, 1)
+							remote_cache(tab_blocked_addr, tab_logging, nil, 1)
+							remote_cache(tab_ddos_counter, tab_logging, nil, 1)
+						end
+					end
+				end
+				break
+			end
+		end
+	end
+	if localized.content_cache ~= nil and #localized.content_cache > 0 and localized.dummy ~= nil and method == 1 then
+		for i=1,#localized.content_cache do --for each host/path in our table
+			local v = localized.content_cache[i]
+			if faster_than_match(v[1]) or localized.string_find(localized.URL, v[1]) then --if our host matches one in the table
+				if localized.resty_redis == 1 or localized.resty_memcached == 1 then
+					if localized.dummy ~= nil then
+						local tab_cached, tab_logging = v[3], v[5]
+						--keepalive
+						remote_cache(tab_cached, tab_logging, 1)
+						--close_connection
+						remote_cache(tab_cached, tab_logging, nil, 1)
+					end
+				end
+				break
+			end
+		end
+	end
+end
+
+--[[
+localized.os_date above is a one line so nobody tampers with it and to keep config simple but i am putting it here for readability
+to sum this up calling os.date is a sys call and can be a blocking io operation my function is nonblocking.
+https://github.com/openresty/lua-nginx-module#ngxtoday as the docs tell you Lua's os.date library is a syscall and could be slow or a bottle neck
+]]
+--[[
+local function get_date_from_unix(wanted_type, unix_time)
+	if localized.get_date_from_unix_cached == nil then
+		localized.get_date_from_unix_cached = {}
+		local day_count, year, days, month = function(yr) return (yr % 4 == 0 and (yr % 100 ~= 0 or yr % 400 == 0)) and 366 or 365 end, 1970, localized.math_floor(unix_time/86400)
+		while days >= day_count(year) do
+			days = days - day_count(year) year = year + 1
+		end
+		local days_count = days
+		local week = 0
+		local count = 0
+		for i=1, 52 do
+			count = 7*i
+			if count <= days_count then localized.get_date_from_unix_cached.week = i end
+		end
+		local tab_overflow = function(seed, table) for i = 1, #table do if seed - table[i] <= 0 then return i, seed end seed = seed - table[i] end end
+		month, days = tab_overflow(days, {31,(day_count(year) == 366 and 29 or 28),31,30,31,30,31,31,30,31,30,31})
+		local hours, minutes, seconds = localized.math_floor(unix_time / 3600 % 24), localized.math_floor(unix_time / 60 % 60), localized.math_floor(unix_time % 60)
+		localized.get_date_from_unix_cached.period = hours > 12 and "pm" or "am"
+		localized.get_date_from_unix_cached.seconds = seconds
+		localized.get_date_from_unix_cached.minutes = minutes
+		localized.get_date_from_unix_cached.hours = hours
+		localized.get_date_from_unix_cached.days = days
+		localized.get_date_from_unix_cached.month = month
+		localized.get_date_from_unix_cached.year = year
+	end
+	if wanted_type == "%M" then
+		return localized.get_date_from_unix_cached.minutes
+	end
+	if wanted_type == "%H" then
+		return localized.get_date_from_unix_cached.hours
+	end
+	if wanted_type == "%d" then
+		return localized.get_date_from_unix_cached.days
+	end
+	if wanted_type == "%W" then
+		return localized.get_date_from_unix_cached.week
+	end
+	if wanted_type == "%m" then
+		return localized.get_date_from_unix_cached.month
+	end
+	if wanted_type == "%Y" then
+		return localized.get_date_from_unix_cached.year
+	end
+	if wanted_type == "%z" then
+		return localized.get_date_from_unix_cached.year+9
+	end
+	if wanted_type == "%Y%m%d" then
+		if localized.get_date_from_unix_cached.ymd == nil then
+			localized.get_date_from_unix_cached.ymd = localized.string_gsub(localized.ngx.today(), "[-]", "")
+		end
+		return localized.get_date_from_unix_cached.ymd
+	end
+	if localized.get_date_from_unix_cached.full == nil then
+		localized.get_date_from_unix_cached.full = localized.string_format("%d/%d/%04d %02d:%02d:%02d %s", localized.get_date_from_unix_cached.days, localized.get_date_from_unix_cached.month, localized.get_date_from_unix_cached.year, localized.get_date_from_unix_cached.hours, localized.get_date_from_unix_cached.minutes, localized.get_date_from_unix_cached.seconds, localized.get_date_from_unix_cached.period)
+	end
+	return localized.get_date_from_unix_cached.full
+end
+--get_date_from_unix("%W",localized.os_time_saved)
+]]
+
 local function internal_header_setup()
 	if localized.anti_ddos_table ~= nil and #localized.anti_ddos_table > 0 then --do ip block checks before we bother generating headers
 		for i=1,#localized.anti_ddos_table do --for each host/path in our table
 			local v = localized.anti_ddos_table[i]
 			if faster_than_match(v[1]) or localized.string_find(localized.URL, v[1]) then --if our host matches one in the table
 				--if localized.request_limit == nil then
+					--localized.request_limit = remote_cache(v[19], v[7])
 					--localized.request_limit = v[19] or nil --What ever memory space your server has set / defined for this to use
 				--end
 				if localized.blocked_addr == nil then
-					localized.blocked_addr = v[20] or nil
+					localized.blocked_addr = remote_cache(v[20], v[7])
+					--localized.blocked_addr = v[20] or nil
 				end
 				if localized.ddos_counter == nil then
-					localized.ddos_counter = v[21] or nil
+					localized.ddos_counter = remote_cache(v[21], v[7])
+					--localized.ddos_counter = v[21] or nil
 				end
 				if localized.blocked_addr ~= nil and localized.ddos_counter ~= nil then
 					local block_duration = v[10]
 					local rate_limit_exit_status = v[11]
 
 					local total_requests = localized.ddos_counter:get("blocked_ip") or 0
+					if total_requests == nil or total_requests == localized.ngx.null then
+						total_requests = 0
+					end
+					if total_requests ~= nil then
+						total_requests = localized.tonumber(total_requests)
+					end
 					if v[33] == 1 then
 						if total_requests > v[24] then --Automatically enable I am Under Attack Mode so disable logging
 							v[7] = 0 --disable logging to prevent denil of service from excessive log file writes using up disk I/O
@@ -3077,7 +3772,7 @@ local function internal_header_setup()
 					--start real ip block
 					local ip = localized.ngx_var_remote_addr
 					local blocked_time = localized.blocked_addr:get(ip) --if for some reason their real ip is in the block list block them else fall back to other checks
-					if blocked_time then
+					if blocked_time and blocked_time ~= localized.ngx.null then
 						if v[7] == 1 then
 							if v[23] == 1 then
 								if total_requests < v[24] then --Less than required amount to trigger Automatically enable I am Under Attack Mode so enable logging
@@ -3086,10 +3781,16 @@ local function internal_header_setup()
 								end
 							end
 						end
-						localized.blocked_addr:set(ip, localized.currenttime, block_duration) --update with current time to extend ban duration
+						if localized.resty_redis == 1 then
+							localized.blocked_addr:set(ip, localized.currenttime)
+							localized.blocked_addr:expire(ip, block_duration)
+						else
+							localized.blocked_addr:set(ip, localized.currenttime, block_duration) --update with current time to extend ban duration
+						end
 						if rate_limit_exit_status ~= 444 and rate_limit_exit_status ~= 204 then --no point with gzip on these
 							localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip --this can slow down nginx tested via 100,000,000 requests nulled out on the block pages
 						end
+						close_connection()
 						return localized.ngx_exit(rate_limit_exit_status)
 					end
 					--end real ip
@@ -3119,7 +3820,7 @@ local function internal_header_setup()
 						end
 					end
 					local blocked_time = localized.blocked_addr:get(ip)
-					if blocked_time then
+					if blocked_time and blocked_time ~= localized.ngx.null then
 						if v[7] == 1 then
 							if v[23] == 1 then
 								if total_requests < v[24] then --Less than required amount to trigger Automatically enable I am Under Attack Mode so enable logging
@@ -3128,10 +3829,16 @@ local function internal_header_setup()
 								end
 							end
 						end
-						localized.blocked_addr:set(ip, localized.currenttime, block_duration) --update with current time to extend ban duration
+						if localized.resty_redis == 1 then
+							localized.blocked_addr:set(ip, localized.currenttime)
+							localized.blocked_addr:expire(ip, block_duration)
+						else
+							localized.blocked_addr:set(ip, localized.currenttime, block_duration) --update with current time to extend ban duration
+						end
 						if rate_limit_exit_status ~= 444 and rate_limit_exit_status ~= 204 then --no point with gzip on these
 							localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip --this can slow down nginx tested via 100,000,000 requests nulled out on the block pages
 						end
+						close_connection()
 						return localized.ngx_exit(rate_limit_exit_status)
 					end
 				end
@@ -3239,11 +3946,25 @@ local function ip_whitelist_flood_checks(ip_table)
 end
 
 local function check_system(number,command,logging,ip)
+	localized.cached_restyshell = nil
+	local function check_resty_shell()
+		if localized.cached_restyshell ~= nil then
+			return localized.cached_restyshell
+		end
+		local pcall = pcall
+		local require = require
+		localized.cached_restyshell = pcall(require, "resty.shell") --check if resty shell library exists will be true or false
+		return localized.cached_restyshell
+	end
+	if check_resty_shell() and localized.os_exe == nil then
+		local shell = require "resty.shell"
+		localized.os_exe = shell.run
+	end
+	if not check_resty_shell() and localized.os_exe == nil then
+		localized.os_execute = io.popen --openresty xray shows this is cpu intensive so if user has resty.shell we use that above this is a fallback method
+	end
 	if localized.package == nil then
 		localized.package = package
-	end
-	if localized.os_exe == nil then
-		localized.os_execute = os.execute --might be better way with io.popen
 	end
 	if localized.system_os == nil then
 		localized.system_os = localized.string_match(localized.package.cpath, "%p[".. localized.string_sub(localized.package.config, 1, 1 ) .."]?%p(%a+)")
@@ -3283,13 +4004,16 @@ local function blocked_address_check(log_message, jsval)
 				local rate_limit_window = localized.anti_ddos_table[i][8]
 				local block_duration = localized.anti_ddos_table[i][10]
 				if localized.request_limit == nil then
-					localized.request_limit = localized.anti_ddos_table[i][19] or nil --What ever memory space your server has set / defined for this to use
+					localized.request_limit = remote_cache(localized.anti_ddos_table[i][19], localized.anti_ddos_table[i][7])
+					--localized.request_limit = localized.anti_ddos_table[i][19] or nil --What ever memory space your server has set / defined for this to use
 				end
 				if localized.blocked_addr == nil then
-					localized.blocked_addr = localized.anti_ddos_table[i][20] or nil
+					localized.blocked_addr = remote_cache(localized.anti_ddos_table[i][20], localized.anti_ddos_table[i][7])
+					--localized.blocked_addr = localized.anti_ddos_table[i][20] or nil
 				end
 				if localized.ddos_counter == nil then
-					localized.ddos_counter = localized.anti_ddos_table[i][21] or nil
+					localized.ddos_counter = remote_cache(localized.anti_ddos_table[i][21], localized.anti_ddos_table[i][7])
+					--localized.ddos_counter = localized.anti_ddos_table[i][21] or nil
 				end
 				local ip = localized.anti_ddos_table[i][22]
 				if ip == "auto" then
@@ -3318,28 +4042,47 @@ local function blocked_address_check(log_message, jsval)
 				if localized.request_limit ~= nil and localized.blocked_addr ~= nil and localized.ddos_counter ~= nil then --we can do so much more than the basic anti-ddos above
 					if jsval ~= nil then
 						if localized.jspuzzle_memory_zone == nil then
-							localized.jspuzzle_memory_zone = localized.anti_ddos_table[i][29]
+							localized.jspuzzle_memory_zone = remote_cache(localized.anti_ddos_table[i][29], localized.anti_ddos_table[i][7])
+							--localized.jspuzzle_memory_zone = localized.anti_ddos_table[i][29]
 						end
 						local jspuzzle_rate_limit_window = localized.anti_ddos_table[i][30]
 						local jspuzzle_request_limit = localized.anti_ddos_table[i][31]
 						if localized.jspuzzle_memory_zone ~= nil then
-							local key = "r" .. ip --set identifyer as r and ip for to not use up to much memory
+							local key = "pr" .. ip --set identifyer as pr and ip for to not use up to much memory
 							local count = "" --create locals to use
 
 							count = localized.jspuzzle_memory_zone:get(key) or nil
-							if count == nil then
-								localized.jspuzzle_memory_zone:set(key, 1, jspuzzle_rate_limit_window)
+							if count == nil or count == localized.ngx.null then
+								if localized.resty_redis == 1 then
+									localized.jspuzzle_memory_zone:set(key, 1)
+									localized.jspuzzle_memory_zone:expire(key, jspuzzle_rate_limit_window)
+								else
+									localized.jspuzzle_memory_zone:set(key, 1, jspuzzle_rate_limit_window)
+								end
 							else
 								count = localized.jspuzzle_memory_zone:get(key)
-								localized.jspuzzle_memory_zone:set(key, count+1, jspuzzle_rate_limit_window)
+								if localized.resty_redis == 1 then
+									localized.jspuzzle_memory_zone:set(key, count+1)
+									localized.jspuzzle_memory_zone:expire(key, jspuzzle_rate_limit_window)
+								else
+									localized.jspuzzle_memory_zone:set(key, count+1, jspuzzle_rate_limit_window)
+								end
 								count = localized.jspuzzle_memory_zone:get(key)
 							end
-							--Rate limit check
 							if count ~= nil then
+								count = localized.tonumber(count)
+							end
+							--Rate limit check
+							if count ~= nil and count ~= localized.ngx.null then
 								if count > jspuzzle_request_limit then
 									if ip_whitelist_flood_checks(localized.ip_whitelist) and check_tor_onion() == false then --if true then block ip
 										--Block IP
-										localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+										if localized.resty_redis == 1 then
+											localized.blocked_addr:set(ip, localized.currenttime)
+											localized.blocked_addr:expire(ip, block_duration)
+										else
+											localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+										end
 										if localized.anti_ddos_table[i][32] ~= nil and localized.anti_ddos_table[i][32] ~= "" then
 											if #localized.anti_ddos_table[i][32] > 0 then
 												for o=1,#localized.anti_ddos_table[i][32] do
@@ -3350,11 +4093,21 @@ local function blocked_address_check(log_message, jsval)
 										localized.blocked_address_check_count = localized.blocked_address_check_count+2
 									end
 									local incr = localized.ddos_counter:get("blocked_ip") or nil
-									if incr == nil then
-										localized.ddos_counter:set("blocked_ip", 1, block_duration)
+									if incr == nil or incr == localized.ngx.null then
+										if localized.resty_redis == 1 then
+											localized.ddos_counter:set("blocked_ip", 1)
+											localized.ddos_counter:expire("blocked_ip", block_duration)
+										else
+											localized.ddos_counter:set("blocked_ip", 1, block_duration)
+										end
 									else
 										local incr = localized.ddos_counter:get("blocked_ip")
-										localized.ddos_counter:set("blocked_ip", incr+1, block_duration)
+										if localized.resty_redis == 1 then
+											localized.ddos_counter:set("blocked_ip", incr+1)
+											localized.ddos_counter:expire("blocked_ip", block_duration)
+										else
+											localized.ddos_counter:set("blocked_ip", incr+1, block_duration)
+										end
 									end
 									if localized.anti_ddos_table[i][7] == 1 then
 										localized.ngx_log(localized.ngx_LOG_TYPE, log_message .. count .. " - " .. ip)
@@ -3365,7 +4118,12 @@ local function blocked_address_check(log_message, jsval)
 					else
 						if ip_whitelist_flood_checks(localized.ip_whitelist) and check_tor_onion() == false then --if true then block ip
 							--Block IP
-							localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+							if localized.resty_redis == 1 then
+								localized.blocked_addr:set(ip, localized.currenttime)
+								localized.blocked_addr:expire(ip, block_duration)
+							else
+								localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+							end
 							if localized.anti_ddos_table[i][32] ~= nil and localized.anti_ddos_table[i][32] ~= "" then
 								if #localized.anti_ddos_table[i][32] > 0 then
 									for o=1,#localized.anti_ddos_table[i][32] do
@@ -3376,11 +4134,21 @@ local function blocked_address_check(log_message, jsval)
 							localized.blocked_address_check_count = localized.blocked_address_check_count+2
 						end
 						local incr = localized.ddos_counter:get("blocked_ip") or nil
-						if incr == nil then
-							localized.ddos_counter:set("blocked_ip", 1, block_duration)
+						if incr == nil or incr == localized.ngx.null then
+							if localized.resty_redis == 1 then
+								localized.ddos_counter:set("blocked_ip", 1)
+								localized.ddos_counter:expire("blocked_ip", block_duration)
+							else
+								localized.ddos_counter:set("blocked_ip", 1, block_duration)
+							end
 						else
 							local incr = localized.ddos_counter:get("blocked_ip")
-							localized.ddos_counter:set("blocked_ip", incr+1, block_duration)
+							if localized.resty_redis == 1 then
+								localized.ddos_counter:set("blocked_ip", incr+1)
+								localized.ddos_counter:expire("blocked_ip", block_duration)
+							else
+								localized.ddos_counter:set("blocked_ip", incr+1, block_duration)
+							end
 						end
 						if localized.anti_ddos_table[i][7] == 1 then
 							localized.ngx_log(localized.ngx_LOG_TYPE, log_message .. ip)
@@ -4493,20 +5261,33 @@ local function anti_ddos()
 		--else --older lua version
 
 			count = localized.request_limit:get(key) or nil
-			if count == nil then
-				localized.request_limit:set(key, 1, rate_limit_window)
+			if count == nil or count == localized.ngx.null then
+				if localized.resty_redis == 1 then
+					localized.request_limit:set(key, 1)
+					localized.request_limit:expire(key, rate_limit_window)
+				else
+					localized.request_limit:set(key, 1, rate_limit_window)
+				end
 				return false
 			else
 				count = localized.request_limit:get(key)
-				localized.request_limit:set(key, count+1, rate_limit_window)
+				if localized.resty_redis == 1 then
+					localized.request_limit:set(key, count+1)
+					localized.request_limit:expire(key, rate_limit_window)
+				else
+					localized.request_limit:set(key, count+1, rate_limit_window)
+				end
 				count = localized.request_limit:get(key)
 			end
 		--end
+		if count ~= nil then
+			count = localized.tonumber(count)
+		end
 
 		--Rate limit check
 		if count > rate_limit_requests then
 			if logging == 1 then
-				localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Rate limit exceeded by IP: " .. ip .. " (Max requests = " .. rate_limit_requests.. " client has made (" .. count .. " requests)")
+				localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Rate limit exceeded by IP: " .. ip .. " Max requests = " .. rate_limit_requests.. " client has made " .. count .. " requests")
 			end
 
 			--if shdict then --backwards compatibility for lua
@@ -4519,11 +5300,21 @@ local function anti_ddos()
 			--else --older lua version
 			
 				local incr = localized.ddos_counter:get("blocked_ip") or nil
-				if incr == nil then
-					localized.ddos_counter:set("blocked_ip", 1, block_duration)
+				if incr == nil or incr == localized.ngx.null then
+					if localized.resty_redis == 1 then
+						localized.ddos_counter:set("blocked_ip", 1)
+						localized.ddos_counter:expire("blocked_ip", block_duration)
+					else
+						localized.ddos_counter:set("blocked_ip", 1, block_duration)
+					end
 				else
 					local incr = localized.ddos_counter:get("blocked_ip")
-					localized.ddos_counter:set("blocked_ip", incr+1, block_duration)
+					if localized.resty_redis == 1 then
+						localized.ddos_counter:set("blocked_ip", incr+1)
+						localized.ddos_counter:expire("blocked_ip", block_duration)
+					else
+						localized.ddos_counter:set("blocked_ip", incr+1, block_duration)
+					end
 				end
 			--end
 
@@ -4538,13 +5329,16 @@ local function anti_ddos()
 			local v = localized.anti_ddos_table[i]
 			if faster_than_match(v[1]) or localized.string_find(localized.URL, v[1]) then --if our host matches one in the table
 				if localized.request_limit == nil then
-					localized.request_limit = v[19] or nil --What ever memory space your server has set / defined for this to use
+					localized.request_limit = remote_cache(v[19], v[7])
+					--localized.request_limit = v[19] or nil --What ever memory space your server has set / defined for this to use
 				end
 				if localized.blocked_addr == nil then
-					localized.blocked_addr = v[20] or nil
+					localized.blocked_addr = remote_cache(v[20], v[7])
+					--localized.blocked_addr = v[20] or nil
 				end
 				if localized.ddos_counter == nil then
-					localized.ddos_counter = v[21] or nil
+					localized.ddos_counter = remote_cache(v[21], v[7])
+					--localized.ddos_counter = v[21] or nil
 				end
 
 				if localized.request_limit ~= nil and localized.blocked_addr ~= nil and localized.ddos_counter ~= nil then --we can do so much more than the basic anti-ddos above
@@ -4562,6 +5356,9 @@ local function anti_ddos()
 					local ip = v[22]
 
 					local total_requests = localized.ddos_counter:get("blocked_ip") or 0
+					if total_requests == nil or total_requests == localized.ngx.null then
+						total_requests = 0
+					end
 					if v[33] == 1 then
 						if total_requests > v[24] then --Automatically enable I am Under Attack Mode so disable logging
 							v[7] = 0 --disable logging to prevent denil of service from excessive log file writes using up disk I/O
@@ -4573,6 +5370,7 @@ local function anti_ddos()
 							if v[7] == 1 then
 								localized.ngx_log(localized.ngx_LOG_TYPE,"[Anti-DDoS] Exceeded Number of keepalive conns from IP " .. localized.ngx_var_connection_requests )
 							end
+							close_connection()
 							localized.ngx_exit(v[3])
 						end
 					end
@@ -4581,6 +5379,7 @@ local function anti_ddos()
 							if v[7] == 1 then
 								localized.ngx_log(localized.ngx_LOG_TYPE,"[Anti-DDoS] Request Smaller than allowed LENGTH in bytes " .. localized.ngx_var_request_length )
 							end
+							close_connection()
 							localized.ngx_exit(v[6])
 						end
 					end
@@ -4589,6 +5388,7 @@ local function anti_ddos()
 							if v[7] == 1 then
 								localized.ngx_log(localized.ngx_LOG_TYPE,"[Anti-DDoS] Request Larger than allowed LENGTH in bytes " .. localized.ngx_var_request_length )
 							end
+							close_connection()
 							localized.ngx_exit(v[6])
 						end
 					end
@@ -4649,7 +5449,7 @@ local function anti_ddos()
 
 					--[[ --dev test to show to log file each users request count
 					local incr = localized.ddos_counter:get("blocked_ip") or 0
-					if incr ~= nil then
+					if incr ~= nil and incr ~= localized.ngx.null then
 						local incr = localized.ddos_counter:get("blocked_ip")
 						localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Total number of IP's in block list : " .. incr)
 					end
@@ -4657,7 +5457,7 @@ local function anti_ddos()
 
 					if localized.ngx_var_http_internal == nil then --1st layer only do blocking on 1st layer not the internal
 						local blocked_time = localized.blocked_addr:get(ip)
-						if blocked_time then
+						if blocked_time and blocked_time ~= localized.ngx.null then
 							if v[7] == 1 then
 								if v[23] == 1 then
 									if total_requests < v[24] then --Less than required amount to trigger Automatically enable I am Under Attack Mode so enable logging
@@ -4666,7 +5466,12 @@ local function anti_ddos()
 									end
 								end
 							end
-							localized.blocked_addr:set(ip, localized.currenttime, block_duration) --update with current time to extend ban duration
+							if localized.resty_redis == 1 then
+								localized.blocked_addr:set(ip, localized.currenttime)
+								localized.blocked_addr:expire(ip, block_duration)
+							else
+								localized.blocked_addr:set(ip, localized.currenttime, block_duration) --update with current time to extend ban duration
+							end
 							if rate_limit_exit_status ~= 444 and rate_limit_exit_status ~= 204 then --no point with gzip on these
 								localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip --this can slow down nginx tested via 100,000,000 requests nulled out on the block pages
 							end
@@ -4677,14 +5482,19 @@ local function anti_ddos()
 									end
 								end
 							end
-
+							close_connection()
 							return localized.ngx_exit(rate_limit_exit_status)
 						end
 
 						if ip_whitelist_flood_checks(localized.ip_whitelist) and check_tor_onion() == false then --if true then block ip
 							if check_rate_limit(ip, rate_limit_window, rate_limit_requests, block_duration, request_limit, ddos_counter, v[7]) then
 								--Block IP
-								localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+								if localized.resty_redis == 1 then
+									localized.blocked_addr:set(ip, localized.currenttime)
+									localized.blocked_addr:expire(ip, block_duration)
+								else
+									localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+								end
 								if v[32] ~= nil and v[32] ~= "" then
 									if #v[32] > 0 then
 										for o=1,#v[32] do
@@ -4695,6 +5505,7 @@ local function anti_ddos()
 								if rate_limit_exit_status ~= 444 and rate_limit_exit_status ~= 204 then --no point with gzip on these
 									localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
 								end
+								close_connection()
 								return localized.ngx_exit(rate_limit_exit_status)
 							end
 						end
@@ -4702,7 +5513,12 @@ local function anti_ddos()
 						if ip_whitelist_flood_checks(localized.ip_whitelist) and check_tor_onion() == false then --if true then block ip
 							if check_slowhttp(content_limit, timeout, connection_header_timeout, connection_header_max_conns, range_whitelist_blacklist, range_table, v[7]) then
 								--Block IP
-								localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+								if localized.resty_redis == 1 then
+									localized.blocked_addr:set(ip, localized.currenttime)
+									localized.blocked_addr:expire(ip, block_duration)
+								else
+									localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+								end
 								if v[32] ~= nil and v[32] ~= "" then
 									if #v[32] > 0 then
 										for o=1,#v[32] do
@@ -4716,7 +5532,7 @@ local function anti_ddos()
 								if slow_limit_exit_status ~= 444 and slow_limit_exit_status ~= 204 then --no point with gzip on these
 									localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
 								end
-
+								close_connection()
 								return localized.ngx_exit(slow_limit_exit_status)
 							end
 						end
@@ -4759,12 +5575,18 @@ local function anti_ddos()
 														localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Blocked sending prohibited header : " .. localized.string_lower(header_value) .. " - " .. ip)
 													end
 													--Block IP
-													localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+													if localized.resty_redis == 1 then
+														localized.blocked_addr:set(ip, localized.currenttime)
+														localized.blocked_addr:expire(ip, block_duration)
+													else
+														localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+													end
 												end
 											end
 											if v[25][i][3] ~= 444 and v[25][i][3] ~= 204 then --no point with gzip on these
 												localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
 											end
+											close_connection()
 											localized.ngx_exit(v[25][i][3])
 										end
 									else
@@ -4776,12 +5598,18 @@ local function anti_ddos()
 															localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Blocked sending prohibited header : " .. localized.string_lower(header_value[i]) .. " - " .. ip)
 														end
 														--Block IP
-														localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+														if localized.resty_redis == 1 then
+															localized.blocked_addr:set(ip, localized.currenttime)
+															localized.blocked_addr:expire(ip, block_duration)
+														else
+															localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+														end
 													end
 												end
 												if v[25][i][3] ~= 444 and v[25][i][3] ~= 204 then --no point with gzip on these
 													localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
 												end
+												close_connection()
 												localized.ngx_exit(v[25][i][3])
 											end
 										end
@@ -4800,12 +5628,18 @@ local function anti_ddos()
 											localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Blocked using prohibited Request Method : " .. localized.ngx_var.request_method .. " - " .. ip)
 										end
 										--Block IP
-										localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+										if localized.resty_redis == 1 then
+											localized.blocked_addr:set(ip, localized.currenttime)
+											localized.blocked_addr:expire(ip, block_duration)
+										else
+											localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+										end
 									end
 								end
 								if v[26][i][2] ~= 444 and v[26][i][2] ~= 204 then --no point with gzip on these
 									localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
 								end
+								close_connection()
 								localized.ngx_exit(v[26][i][2])
 							end
 						end
@@ -4818,6 +5652,100 @@ local function anti_ddos()
 					if v[28] > 0 then --dsiable compression when banlist has more than certain number of ips automated protection
 						if total_requests >= v[24] then --Automatically enable I am Under Attack Mode
 							localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
+						end
+					end
+
+					if v[34] ~= nil then
+						local req_headers = localized.ngx_req_get_headers()
+						local counter = 0
+						for key, value in localized.next, req_headers do
+							if localized.type(value) == "table" then
+								for i=1, #value do
+									counter=counter+1
+								end
+							else
+								counter=counter+1
+							end
+						end
+						if counter >= v[34] then
+							if ip_whitelist_flood_checks(localized.ip_whitelist) and check_tor_onion() == false then --if true then block ip
+								if v[36] > 0 then
+									if v[7] == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Max number of headers exceeds allowed = " .. v[34] .. " - total client sent = " .. counter .. " - " .. ip)
+									end
+									--Block IP
+									if localized.resty_redis == 1 then
+										localized.blocked_addr:set(ip, localized.currenttime)
+										localized.blocked_addr:expire(ip, block_duration)
+									else
+										localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+									end
+								end
+							end
+							if v[35] ~= 444 and v[35] ~= 204 then --no point with gzip on these
+								localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
+							end
+							close_connection()
+							localized.ngx_exit(v[35])
+						end
+					end
+
+					if v[37] ~= nil then
+						local args = localized.ngx_req_get_uri_args()
+						local counter = 0
+						for key, value in localized.next, args do
+							if localized.type(value) == "table" then
+								for i=1, #value do
+									counter=counter+1
+								end
+							else
+								counter=counter+1
+							end
+						end
+						if counter >= v[37] then
+							if ip_whitelist_flood_checks(localized.ip_whitelist) and check_tor_onion() == false then --if true then block ip
+								if v[39] > 0 then
+									if v[7] == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Max number of request URI args exceeds allowed = " .. v[37] .. " - total client sent = " .. counter .. " - " .. ip)
+									end
+									--Block IP
+									if localized.resty_redis == 1 then
+										localized.blocked_addr:set(ip, localized.currenttime)
+										localized.blocked_addr:expire(ip, block_duration)
+									else
+										localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+									end
+								end
+							end
+							if v[38] ~= 444 and v[38] ~= 204 then --no point with gzip on these
+								localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
+							end
+							close_connection()
+							localized.ngx_exit(v[38])
+						end
+					end
+
+					if v[40] ~= nil then
+						if #localized.request_uri >= v[40] then
+							if ip_whitelist_flood_checks(localized.ip_whitelist) and check_tor_onion() == false then --if true then block ip
+								if v[42] > 0 then
+									if v[7] == 1 then
+										localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Max request URI length exceeds allowed = " .. v[40] .. " - total client URI length = " .. #localized.request_uri .. " - " .. ip)
+									end
+									--Block IP
+									if localized.resty_redis == 1 then
+										localized.blocked_addr:set(ip, localized.currenttime)
+										localized.blocked_addr:expire(ip, block_duration)
+									else
+										localized.blocked_addr:set(ip, localized.currenttime, block_duration)
+									end
+								end
+							end
+							if v[41] ~= 444 and v[41] ~= 204 then --no point with gzip on these
+								localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
+							end
+							close_connection()
+							localized.ngx_exit(v[41])
 						end
 					end
 
@@ -4836,6 +5764,7 @@ local function anti_ddos()
 							if v[7] == 1 then
 								localized.ngx_log(localized.ngx_LOG_TYPE,"[Anti-DDoS] Exceeded Number of keepalive conns from IP " .. localized.ngx_var_connection_requests )
 							end
+							close_connection()
 							localized.ngx_exit(v[3])
 						end
 					end
@@ -4844,6 +5773,7 @@ local function anti_ddos()
 							if v[7] == 1 then
 								localized.ngx_log(localized.ngx_LOG_TYPE,"[Anti-DDoS] Request Smaller than allowed LENGTH in bytes " .. localized.ngx_var_request_length )
 							end
+							close_connection()
 							localized.ngx_exit(v[6])
 						end
 					end
@@ -4852,6 +5782,7 @@ local function anti_ddos()
 							if v[7] == 1 then
 								localized.ngx_log(localized.ngx_LOG_TYPE,"[Anti-DDoS] Request Larger than allowed LENGTH in bytes " .. localized.ngx_var_request_length )
 							end
+							close_connection()
 							localized.ngx_exit(v[6])
 						end
 					end
@@ -4892,6 +5823,7 @@ local function anti_ddos()
 							if v[7] == 1 then
 								localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] SlowHTTP / Slowloris attack detected from: " .. ip)
 							end
+							close_connection()
 							return localized.ngx_exit(slow_limit_exit_status)
 						end
 					end
@@ -4912,6 +5844,7 @@ local function anti_ddos()
 											if t[3] ~= 444 and t[3] ~= 204 then --no point with gzip on these
 												localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
 											end
+											close_connection()
 											localized.ngx_exit(t[3])
 										end
 									else
@@ -4923,6 +5856,7 @@ local function anti_ddos()
 												if t[3] ~= 444 and t[3] ~= 204 then --no point with gzip on these
 													localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
 												end
+												close_connection()
 												localized.ngx_exit(t[3])
 											end
 										end
@@ -4941,6 +5875,7 @@ local function anti_ddos()
 								if v[26][i][2] ~= 444 and v[26][i][2] ~= 204 then --no point with gzip on these
 									localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
 								end
+								close_connection()
 								localized.ngx_exit(v[26][i][2])
 							end
 						end
@@ -4948,6 +5883,67 @@ local function anti_ddos()
 
 					if v[27] < 1 then --disable gzip option
 						localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
+					end
+
+					if v[34] ~= nil then
+						local req_headers = localized.ngx_req_get_headers()
+						local counter = 0
+						for key, value in localized.next, req_headers do
+							if localized.type(value) == "table" then
+								for i=1, #value do
+									counter=counter+1
+								end
+							else
+								counter=counter+1
+							end
+						end
+						if counter >= v[34] then
+							if v[7] == 1 then
+								localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Max number of headers exceeds allowed = " .. v[34] .. " - total client sent = " .. counter .. " - " .. ip)
+							end
+							if v[35] ~= 444 and v[35] ~= 204 then --no point with gzip on these
+								localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
+							end
+							close_connection()
+							localized.ngx_exit(v[35])
+						end
+					end
+
+					if v[37] ~= nil then
+						local args = localized.ngx_req_get_uri_args()
+						local counter = 0
+						for key, value in localized.next, args do
+							if localized.type(value) == "table" then
+								for i=1, #value do
+									counter=counter+1
+								end
+							else
+								counter=counter+1
+							end
+						end
+						if counter >= v[37] then
+							if v[7] == 1 then
+								localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Max number of request URI args exceeds allowed = " .. v[37] .. " - total client sent = " .. counter .. " - " .. ip)
+							end
+							if v[38] ~= 444 and v[38] ~= 204 then --no point with gzip on these
+								localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
+							end
+							close_connection()
+							localized.ngx_exit(v[38])
+						end
+					end
+
+					if v[40] ~= nil then
+						if #localized.request_uri >= v[40] then
+							if v[7] == 1 then
+								localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS] Max request URI length exceeds allowed = " .. v[40] .. " - total client URI length = " .. #localized.request_uri .. " - " .. ip)
+							end
+							if v[41] ~= 444 and v[41] ~= 204 then --no point with gzip on these
+								localized.ngx_req_set_header("Accept-Encoding", "") --disable gzip
+							end
+							close_connection()
+							localized.ngx_exit(v[41])
+						end
 					end
 
 				end
@@ -5293,6 +6289,7 @@ local function WAF_Post_Requests()
 					end
 					if arguement1 and arguement2 then --if what would of been our empty vars have been changed to not empty meaning a WAF match then block the request
 						localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] Blocked Request POST args prohibited : arg_name = " .. argument_name .. " - arg_value = " .. argument_value .. " - IP : " .. localized.remote_addr)
+						close_connection()
 						return localized.ngx_exit(localized.ngx_HTTP_FORBIDDEN) --deny user access
 					end
 				end
@@ -5334,6 +6331,7 @@ local function WAF_Header_Requests()
 					end
 					if arguement1 and arguement2 then --if what would of been our empty vars have been changed to not empty meaning a WAF match then block the request
 						localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] Blocked Request Header prohibited : arg_name = " .. argument_name .. " - arg_value = " .. argument_value .. " - IP : " .. localized.remote_addr)
+						close_connection()
 						return localized.ngx_exit(localized.ngx_HTTP_FORBIDDEN) --deny user access
 					end
 				end
@@ -5375,6 +6373,7 @@ local function WAF_query_string_Request()
 					end
 					if arguement1 and arguement2 then --if what would of been our empty vars have been changed to not empty meaning a WAF match then block the request
 						localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] Blocked Request Query String prohibited : arg_name = " .. argument_name .. " - arg_value = " .. argument_value .. " - IP : " .. localized.remote_addr)
+						close_connection()
 						return localized.ngx_exit(localized.ngx_HTTP_FORBIDDEN) --deny user access
 					end
 				end
@@ -5405,6 +6404,7 @@ local function WAF_URI_Request()
 			if faster_than_match(v[1]) or localized.string_find(localized.URL, v[1]) then --if our host matches one in the table
 				if localized.string_find(args, v[2]) then
 					localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] Blocked Request URI prohibited : " .. localized.URL .. " - IP : " .. localized.remote_addr)
+					close_connection()
 					return localized.ngx_exit(localized.ngx_HTTP_FORBIDDEN) --deny user access
 				end
 			end
@@ -5431,6 +6431,7 @@ local function check_ips()
 			if localized.ip_whitelist_block_mode == 1 then --ip address not matched the above
 				blocked_address_check("[Anti-DDoS] Blocked IP attempt for not being in whitelist : ")
 				localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] Blocked IP not in whitelist IP : " .. localized.ip_whitelist_remote_addr)
+				close_connection()
 				return localized.ngx_exit(localized.ngx_HTTP_CLOSE) --deny user access
 			end
 		end
@@ -5450,10 +6451,12 @@ local function check_ips()
 				if value == localized.ip_blacklist_remote_addr then
 					blocked_address_check("[Anti-DDoS] Blocked IP attempt for being in blacklist : ")
 					localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] Blocked IP in blacklist - " .. value .. " -" .. " IP : " .. localized.ip_blacklist_remote_addr)
+					close_connection()
 					return localized.ngx_exit(localized.ngx_HTTP_CLOSE) --deny user access
 				elseif ip_address_in_range(value, localized.ip_blacklist_remote_addr) == true then
 					blocked_address_check("[Anti-DDoS] Blocked IP attempt for being in blacklist : ")
 					localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] Blocked IP in blacklist - " .. value .. " -" .. " IP : " .. localized.ip_blacklist_remote_addr)
+					close_connection()
 					return localized.ngx_exit(localized.ngx_HTTP_CLOSE) --deny user access
 				end
 			end
@@ -5491,6 +6494,7 @@ local function check_user_agents()
 						end
 						if faster_than_match(value[1]) or localized.string_find(user_agent_blacklist_var, value[1])then
 							localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] User-Agent Blocked - " .. user_agent_blacklist_var .. " -" .. " IP : " .. localized.remote_addr)
+							close_connection()
 							return localized.ngx_exit(localized.ngx_HTTP_FORBIDDEN) --deny user access
 						end
 					end
@@ -5511,6 +6515,7 @@ local function check_user_agents()
 							end
 							if faster_than_match(value[1]) or localized.string_find(user_agent_blacklist_var[x], value[1])then
 								localized.ngx_log(localized.ngx_LOG_TYPE, "[Anti-DDoS][WAF] User-Agent Blocked - " .. user_agent_blacklist_var[x] .. " -" .. " IP : " .. localized.remote_addr)
+								close_connection()
 								return localized.ngx_exit(localized.ngx_HTTP_FORBIDDEN) --deny user access
 							end
 						end
@@ -5903,6 +6908,7 @@ end
 
 --block tor function to block traffic from tor users
 local function blocktor()
+	close_connection()
 	return localized.ngx_exit(localized.ngx_HTTP_FORBIDDEN) --deny user access
 end
 
@@ -6047,6 +7053,7 @@ local function check_authorization(authorization, authorization_dynamic)
 		else
 			localized.ngx_header['WWW-Authenticate'] = 'Basic realm="' .. localized.authorization_message .. ' ' .. localized.authorization_username_message .. ' ' .. authorization_username .. ' ' .. localized.authorization_password_message .. ' ' .. authorization_password .. '", charset="' .. localized.default_charset .. '"' --send client a box to input required username and password fields
 		end
+		close_connection()
 		localized.ngx_exit(localized.ngx_HTTP_UNAUTHORIZED) --deny access any further
 	end
 end
@@ -6163,6 +7170,7 @@ local function grant_access()
 			localized.ngx_header["Expires"] = "0"
 			localized.ngx_header.content_type = "text/html; charset=" .. localized.default_charset
 			localized.ngx_status = expected_header_status
+			close_connection()
 			localized.ngx_exit(expected_header_status)
 		end
 		if req_headers[localized.x_auth_header_name] == JsPuzzleAnswer then --if the answer header provided by the browser Javascript matches what our Javascript puzzle answer should be
@@ -6181,6 +7189,7 @@ local function grant_access()
 			localized.ngx_header["Expires"] = "0"
 			localized.ngx_header.content_type = "text/html; charset=" .. localized.default_charset
 			localized.ngx_status = expected_header_status
+			close_connection()
 			localized.ngx_exit(expected_header_status)
 		end
 	end
@@ -6542,6 +7551,7 @@ localized.ngx_say(localized.anti_ddos_html_output)
 if localized.os_clock ~= nil then
 localized.ngx_log(localized.ngx_LOG_TYPE,  " Puzzle Elapsed time is: " .. os.clock()-localized.os_clock)
 end
+close_connection()
 localized.ngx_exit(authentication_page_status_output)
 
 end
@@ -6554,6 +7564,7 @@ if localized.content_cache == nil or #localized.content_cache == 0 then
 	end
 	--localized.ngx_log(localized.ngx_LOG_TYPE,  " resp_content_type after " .. get_resp_content_type() )
 	if localized.exit_status then
+		close_connection()
 		localized.ngx_exit(localized.ngx_OK) --Go to content
 	end
 end
@@ -6856,14 +7867,31 @@ local function minification(content_type_list)
 					--localized.ngx_log(localized.ngx_LOG_TYPE, " request_body_file is " .. request_body_file )
 				end
 				if request_body_file ~= "" then
-					local fh, err = io.open(request_body_file, "rb")
+					localized.cached_ngx_io = nil
+					local function check_ngx_io()
+						if localized.cached_ngx_io ~= nil then
+							return localized.cached_ngx_io
+						end
+						local pcall = pcall
+						local require = require
+						localized.cached_ngx_io = pcall(require, "ngx.io") --check if ngx.io library exists will be true or false
+						return localized.cached_ngx_io
+					end
+					if check_ngx_io() and localized.read_file == nil then
+						local read_file = require "ngx.io"
+						localized.read_file = read_file.open
+					end
+					if not check_ngx_io() and localized.read_file == nil then
+						localized.read_file = io.open
+					end
+					local fh, err = localized.read_file(request_body_file, "r")
 					if err then
 						localized.ngx_status = localized.ngx_HTTP_INTERNAL_SERVER_ERROR
 						localized.ngx_log(localized.ngx_LOG_TYPE, "error reading request_body_file:", err)
 						return
 						--goto end_for_loop
 					end
-					request_body = fh:read("*all")
+					request_body = fh:read("*a")
 					fh:close()
 				end
 				if request_body == nil then
@@ -6883,303 +7911,7 @@ local function minification(content_type_list)
 					return localized.cached_restyhttp
 				end
 
-				localized.cached_restyredis = nil
-				local function check_resty_redis()
-					if localized.cached_restyredis ~= nil then
-						return localized.cached_restyredis
-					end
-					local pcall = pcall
-					local require = require
-					localized.cached_restyredis = pcall(require, "resty.redis") --check if resty redis library exists will be true or false
-					return localized.cached_restyredis
-				end
-
-				localized.cached_restymemcached = nil
-				local function check_resty_memcached()
-					if localized.cached_restymemcached ~= nil then
-						return localized.cached_restymemcached
-					end
-					local pcall = pcall
-					local require = require
-					localized.cached_restymemcached = pcall(require, "resty.memcached") --check if resty memcached library exists will be true or false
-					return localized.cached_restymemcached
-				end
-
-				localized.cached_restylrucache = nil
-				local function check_resty_lrucache()
-					if localized.cached_restylrucache ~= nil then
-						return localized.cached_restylrucache
-					end
-					local pcall = pcall
-					local require = require
-					localized.cached_restylrucache = pcall(require, "resty.lrucache") --check if resty lrucache library exists will be true or false
-					return localized.cached_restylrucache
-				end
-
-				local cached = content_type_list[i][3] or ""
-				local resty_redis = 0
-				local master_break = false
-				if cached ~= "" and localized.type(cached) == "table" then
-					local connect_timeout, send_timeout, read_timeout, libconaddr, libconport, max_idle_timeout, pool_size, auth_user, auth_pass, fallback_servers = nil
-					for x=1,#content_type_list[i][3] do
-						--localized.ngx_log(localized.ngx_LOG_TYPE, " table var - " .. content_type_list[i][3][x] )
-						if x == 1 then
-							if content_type_list[i][3][x] == 1 then
-								--localized.ngx_log(localized.ngx_LOG_TYPE, " redis - " .. localized.tostring(check_resty_redis()) )
-								if check_resty_redis() then
-									localized.libcached = require "resty.redis"
-									cached = localized.libcached:new()
-									resty_redis = 1
-								else
-									if content_type_list[i][5] == 1 then
-										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
-									end
-									return
-								end
-							end
-							if content_type_list[i][3][x] == 2 then
-								--localized.ngx_log(localized.ngx_LOG_TYPE, " memcached - " .. localized.tostring(check_resty_memcached()) )
-								if check_resty_memcached() then
-									localized.libcached = require "resty.memcached"
-									cached = localized.libcached:new()
-								else
-									if content_type_list[i][5] == 1 then
-										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
-									end
-									return
-								end
-							end
-							if content_type_list[i][3][x] == 3 then
-								--localized.ngx_log(localized.ngx_LOG_TYPE, " lrucache - " .. localized.tostring(check_resty_lrucache()) )
-								if check_resty_lrucache() and content_type_list[i][3][2] ~= nil then
-									--localized.libcached = require "resty.lrucache"
-									--cached = localized_global.lrucache
-									cached = content_type_list[i][3][2]
-									--[[
-									init_by_lua_block {
-									localized_global = {} --define global var that script can read
-									local libcached = require "resty.lrucache"
-									localized_global.lrucache = libcached.new(100)
-									}
-									]]
-								else
-									if content_type_list[i][5] == 1 then
-										localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
-									end
-									return
-								end
-							end
-							if content_type_list[i][3][x] == 4 then
-								cached = content_type_list[i][3][2]
-								break
-							end
-						end
-						if x == 2 then
-							--ip address or socket
-							libconaddr = content_type_list[i][3][x]
-						end
-						if x == 3 then
-							--port
-							libconport = content_type_list[i][3][x]
-						end
-						if x == 4 then
-							--connect_timeout
-							connect_timeout = content_type_list[i][3][x]
-						end
-						if x == 5 then
-							--send_timeout
-							send_timeout = content_type_list[i][3][x]
-						end
-						if x == 6 then
-							--read_timeout
-							read_timeout = content_type_list[i][3][x]
-						end
-						if x == 7 then
-							--keepalive max_idle_timeout
-							max_idle_timeout = content_type_list[i][3][x]
-						end
-						if x == 8 then
-							--keepalive pool_size
-							pool_size = content_type_list[i][3][x]
-						end
-						if x == 9 then
-							auth_user = content_type_list[i][3][x]
-						end
-						if x == 10 then
-							auth_pass = content_type_list[i][3][x]
-						end
-						if x == 11 then
-							fallback_servers = content_type_list[i][3][x]
-						end
-					end
-
-					local function connect_server(connect_timeout, send_timeout, read_timeout, libconaddr, libconport, max_idle_timeout, pool_size, auth_user, auth_pass)
-						if connect_timeout ~= nil and send_timeout ~= nil and read_timeout ~= nil then
-							cached:set_timeouts(connect_timeout, send_timeout, read_timeout)
-						end
-						if connect_timeout ~= nil and send_timeout == nil and read_timeout == nil then
-							cached:set_timeout(connect_timeout)
-						end
-
-						if libconaddr ~= nil and libconport == nil then
-							local ok, err = cached:connect(libconaddr)
-							if not ok then
-								if content_type_list[i][5] == 1 then
-									localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to connect: " .. err )
-								end
-								return false
-							end
-						end
-
-						if libconaddr ~= nil and libconport ~= nil then
-							local ok, err = cached:connect(libconaddr, libconport)
-							if not ok then
-								if content_type_list[i][5] == 1 then
-									localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to connect: " .. err )
-								end
-								return false
-							end
-						end
-
-						if auth_user ~= nil and auth_pass ~= nil then
-							local ok, err = cached:auth(auth_user, auth_pass)
-							if not ok then
-								if content_type_list[i][5] == 1 then
-									localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to authenticate: ", err)
-								end
-								return false
-							end
-						end
-
-						if auth_user == nil and auth_pass ~= nil then
-							local ok, err = cached:auth(auth_pass)
-							if not ok then
-								if content_type_list[i][5] == 1 then
-									localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to authenticate: ", err)
-								end
-								return false
-							end
-						end
-
-						if max_idle_timeout ~= nil and pool_size ~= nil then
-							local ok, err = cached:set_keepalive(max_idle_timeout, pool_size)
-							if not ok then
-								if content_type_list[i][5] == 1 then
-									localized.ngx_log(localized.ngx_LOG_TYPE, "Failed to set keepalive: " .. err )
-								end
-								return false
-							end
-						end
-						return true --all checks passed
-					end
-					--connect_server()
-
-					if connect_server(connect_timeout, send_timeout, read_timeout, libconaddr, libconport, max_idle_timeout, pool_size, auth_user, auth_pass) == false and fallback_servers ~= nil then
-						for y=1,#fallback_servers do
-							resty_redis = 0 --reset to 0
-							if master_break then break end
-							for z=1,#fallback_servers[y] do
-								if z == 1 then
-									if fallback_servers[y][z] == 1 then
-										--localized.ngx_log(localized.ngx_LOG_TYPE, " redis - " .. localized.tostring(check_resty_redis()) )
-										if check_resty_redis() then
-											localized.libcached = require "resty.redis"
-											cached = localized.libcached:new()
-											resty_redis = 1
-										else
-											if content_type_list[i][5] == 1 then
-												localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
-											end
-											return
-										end
-									end
-									if fallback_servers[y][z] == 2 then
-										--localized.ngx_log(localized.ngx_LOG_TYPE, " memcached - " .. localized.tostring(check_resty_memcached()) )
-										if check_resty_memcached() then
-											localized.libcached = require "resty.memcached"
-											cached = localized.libcached:new()
-										else
-											if content_type_list[i][5] == 1 then
-												localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
-											end
-											return
-										end
-									end
-									if fallback_servers[y][z] == 3 then
-										--localized.ngx_log(localized.ngx_LOG_TYPE, " lrucache - " .. localized.tostring(check_resty_lrucache()) )
-										if check_resty_lrucache() and fallback_servers[y][2] ~= nil then
-											--localized.libcached = require "resty.lrucache"
-											--cached = localized_global.lrucache
-											cached = fallback_servers[y][2]
-											--[[
-											init_by_lua_block {
-											localized_global = {} --define global var that script can read
-											local libcached = require "resty.lrucache"
-											localized_global.lrucache = libcached.new(100)
-											}
-											]]
-											if cached then
-												master_break = true
-												break
-											end
-										else
-											if content_type_list[i][5] == 1 then
-												localized.ngx_log(localized.ngx_LOG_TYPE, "There is a problem with the library you are trying to use for cache storage. Please make sure you have included the library.")
-											end
-											return
-										end
-									end
-									if fallback_servers[y][z] == 4 then
-										cached = fallback_servers[y][2]
-										if cached then
-											master_break = true
-											break
-										end
-									end
-								end
-								if z == 2 then
-									--ip address or socket
-									libconaddr = fallback_servers[y][z]
-								end
-								if z == 3 then
-									--port
-									libconport = fallback_servers[y][z]
-								end
-								if z == 4 then
-									--connect_timeout
-									connect_timeout = fallback_servers[y][z]
-								end
-								if z == 5 then
-									--send_timeout
-									send_timeout = fallback_servers[y][z]
-								end
-								if z == 6 then
-									--read_timeout
-									read_timeout = fallback_servers[y][z]
-								end
-								if z == 7 then
-									--keepalive max_idle_timeout
-									max_idle_timeout = fallback_servers[y][z]
-								end
-								if z == 8 then
-									--keepalive pool_size
-									pool_size = fallback_servers[y][z]
-								end
-								if z == 9 then
-									auth_user = fallback_servers[y][z]
-								end
-								if z == 10 then
-									auth_pass = fallback_servers[y][z]
-								end
-								if connect_server(connect_timeout, send_timeout, read_timeout, libconaddr, libconport, max_idle_timeout, pool_size, auth_user, auth_pass) == true then
-									master_break = true
-									break
-								end
-							end
-						end
-					end
-
-				end
+				local cached = remote_cache(content_type_list[i][3], content_type_list[i][5])
 				if cached ~= "" then
 					local ttl = content_type_list[i][4] or ""
 					local cookie_string = ""
@@ -7272,7 +8004,7 @@ local function minification(content_type_list)
 													if content_type_list[i][10] == 1 then
 														localized.ngx_header["X-Cache-Status"] = "UPDATING"
 													end
-													if resty_redis == 1 then
+													if localized.resty_redis == 1 then
 														cached:set(key, output_minified)
 														cached:expire(key, ttl)
 														cached:set("s"..key, res.status)
@@ -7287,7 +8019,7 @@ local function minification(content_type_list)
 															if content_type_list[i][17] ~= "" or #content_type_list[i][17] > 0 then
 																for a=1, #content_type_list[i][17] do
 																	if localized.string_lower(localized.tostring(header_original)) == localized.string_lower(content_type_list[i][17][a]) then
-																		if resty_redis == 1 then
+																		if localized.resty_redis == 1 then
 																			cached:set(localized.string_lower(localized.tostring(header_original))..key, header)
 																			cached:expire(localized.string_lower(localized.tostring(header_original))..key, ttl)
 																		else
@@ -7307,6 +8039,7 @@ local function minification(content_type_list)
 													--localized.ngx_status = res.status
 													localized.ngx_status = response_status_match(res.status)
 													localized.ngx_say(output_minified)
+													close_connection(1)
 													localized.ngx_exit(response_status_match(content_type_list[i][6][z]))
 													--localized.ngx_exit(content_type_list[i][6][z])
 													break
@@ -7381,7 +8114,7 @@ local function minification(content_type_list)
 													if content_type_list[i][10] == 1 then
 														localized.ngx_header["X-Cache-Status"] = "UPDATING"
 													end
-													if resty_redis == 1 then
+													if localized.resty_redis == 1 then
 														cached:set(key, output_minified)
 														cached:expire(key, ttl)
 														cached:set("s"..key, res.status)
@@ -7396,7 +8129,7 @@ local function minification(content_type_list)
 															if content_type_list[i][17] ~= "" or #content_type_list[i][17] > 0 then
 																for a=1, #content_type_list[i][17] do
 																	if localized.string_lower(localized.tostring(header_original)) == localized.string_lower(content_type_list[i][17][a]) then
-																		if resty_redis == 1 then
+																		if localized.resty_redis == 1 then
 																			cached:set(localized.string_lower(localized.tostring(header_original))..key, header)
 																			cached:expire(localized.string_lower(localized.tostring(header_original))..key, ttl)
 																		else
@@ -7416,6 +8149,7 @@ local function minification(content_type_list)
 													--localized.ngx_status = res.status
 													localized.ngx_status = response_status_match(res.status)
 													localized.ngx_say(output_minified)
+													close_connection(1)
 													localized.ngx_exit(response_status_match(content_type_list[i][6][z]))
 													--localized.ngx_exit(content_type_list[i][6][z])
 													break
@@ -7461,6 +8195,7 @@ local function minification(content_type_list)
 							--localized.ngx_status = res_status
 							localized.ngx_status = response_status_match(res_status)
 							localized.ngx_say(output_minified)
+							close_connection(1)
 							localized.ngx_exit(localized.tonumber(response_status_match(res_status)))
 							--localized.ngx_exit(res_status)
 
@@ -7540,6 +8275,7 @@ local function minification(content_type_list)
 												--localized.ngx_status = res.status
 												localized.ngx_status = response_status_match(res.status)
 												localized.ngx_say(output_minified)
+												close_connection(1)
 												localized.ngx_exit(response_status_match(content_type_list[i][6][z]))
 												--localized.ngx_exit(content_type_list[i][6][z])
 												break
@@ -7621,6 +8357,7 @@ local function minification(content_type_list)
 												--localized.ngx_status = res.status
 												localized.ngx_status = response_status_match(res.status)
 												localized.ngx_say(output_minified)
+												close_connection(1)
 												localized.ngx_exit(response_status_match(content_type_list[i][6][z]))
 												--localized.ngx_exit(content_type_list[i][6][z])
 												break
@@ -7651,4 +8388,11 @@ local function minification(content_type_list)
 end --end minification function
 
 minification(localized.content_cache)
+end
+
+if localized.anti_ddos_table ~= nil and #localized.anti_ddos_table > 0 then
+close_connection()
+end
+if localized.content_cache ~= nil and #localized.content_cache > 0 then
+close_connection(1)
 end

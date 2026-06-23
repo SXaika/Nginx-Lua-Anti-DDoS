@@ -16,6 +16,8 @@ This can protect you from many different forms of DDoS works with both HTTP and 
 No limit on attack size
 Uptime guarantee
 
+100% asynchronous nonblocking I/O
+
 # Features :
 
 These are some of the features I built into the script so far.
@@ -23,6 +25,12 @@ These are some of the features I built into the script so far.
 ## Security
 
 Limit IP requests / Flooding
+
+Ability to use Remote servers for Anti-DDoS data/key storage
+
+Ability to use redis cache server for anti-ddos protection
+
+Ability to use memcached server for anti-ddos protection
 
 Automatically turn on Under Attack mode if DDoS detected
 
@@ -134,7 +142,7 @@ https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/pulls
 
 Edit settings inside `anti_ddos_challenge.lua` to cater for your own unique needs or improve my work. (Please share your soloutions and additions)
 
-https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/blob/master/lua/anti_ddos_challenge.lua
+https://github.com/C0nw0nk/Nginx-Lua-Anti-DDoS/blob/master/lua/anti_ddos_challenge.lua#L234
 
 Add this to your Nginx configuration folder.
 
@@ -146,9 +154,6 @@ Add this to your HTTP block or it can be in a server or location block depending
 
 ```lua
 lua_shared_dict antiddos 70m; #Anti-DDoS shared memory zone to track requests per each unique user
-lua_shared_dict antiddos_blocked 70m; #Anti-DDoS shared memory where blocked users are put
-lua_shared_dict ddos_counter 10m; #Anti-DDoS shared memory zone to track total number of blocked users
-lua_shared_dict jspuzzle_tracker 70m; #Anti-DDoS shared memory zone monitors each unique ip and number of times they stack up failing to solve the puzzle
 
 access_by_lua_file anti_ddos_challenge.lua;
 ```
@@ -162,9 +167,6 @@ http {
 
 #shared memory addresses in http block
 lua_shared_dict antiddos 70m; #Anti-DDoS shared memory zone to track requests per each unique user
-lua_shared_dict antiddos_blocked 70m; #Anti-DDoS shared memory where blocked users are put
-lua_shared_dict ddos_counter 10m; #Anti-DDoS shared memory zone to track total number of blocked users
-lua_shared_dict jspuzzle_tracker 70m; #Anti-DDoS shared memory zone monitors each unique ip and number of times they stack up failing to solve the puzzle
 
 #nginx config settings etc
 access_by_lua_file anti_ddos_challenge.lua;
@@ -179,9 +181,6 @@ This will make it run for this website only
 http {
 #shared memory addresses in http block
 lua_shared_dict antiddos 70m; #Anti-DDoS shared memory zone to track requests per each unique user
-lua_shared_dict antiddos_blocked 70m; #Anti-DDoS shared memory where blocked users are put
-lua_shared_dict ddos_counter 10m; #Anti-DDoS shared memory zone to track total number of blocked users
-lua_shared_dict jspuzzle_tracker 70m; #Anti-DDoS shared memory zone monitors each unique ip and number of times they stack up failing to solve the puzzle
 }
 
 server {
@@ -197,9 +196,6 @@ This will run in this location block only
 http {
 #shared memory addresses in http block
 lua_shared_dict antiddos 70m; #Anti-DDoS shared memory zone to track requests per each unique user
-lua_shared_dict antiddos_blocked 70m; #Anti-DDoS shared memory where blocked users are put
-lua_shared_dict ddos_counter 10m; #Anti-DDoS shared memory zone to track total number of blocked users
-lua_shared_dict jspuzzle_tracker 70m; #Anti-DDoS shared memory zone monitors each unique ip and number of times they stack up failing to solve the puzzle
 }
 
 location / {
